@@ -1,0 +1,47 @@
+export const CLASSES = {
+  blade: {
+    id: 'blade',
+    color: 0x4fd1ff,
+    sprite: 'knight_m',
+    weaponAnim: 'sword',
+    base: { hp: 150, mp: 40, atk: 13, def: 6, speed: 190, crit: 0.05, mpRegen: 1.4, hpPerLevel: 15, mpPerLevel: 3, atkPerLevel: 2.2 },
+    engageRange: 70,
+    comboWindow: 700,
+    combo: [
+      { type: 'arc', damage: 0.9, range: 80, arc: 110, breakAmt: 12, knockback: 40, lunge: 150, duration: 170, recovery: 110, anim: 'swing', fx: 1.0 },
+      { type: 'arc', damage: 1.0, range: 84, arc: 130, breakAmt: 14, knockback: 60, lunge: 170, duration: 170, recovery: 110, anim: 'swingBack', fx: 1.05, mirror: true },
+      { type: 'arc', damage: 1.8, range: 100, arc: 170, breakAmt: 34, knockback: 300, lunge: 240, duration: 260, recovery: 360, anim: 'finisher', fx: 1.5, impact: 'heavy' },
+    ],
+    skills: ['slash_wave', 'spin', 'war_cry'],
+  },
+  archer: {
+    id: 'archer',
+    color: 0xffd23f,
+    sprite: 'elf_m',
+    weaponAnim: 'bow',
+    base: { hp: 105, mp: 50, atk: 11, def: 3, speed: 215, crit: 0.12, mpRegen: 1.6, hpPerLevel: 10, mpPerLevel: 4, atkPerLevel: 2.0 },
+    engageRange: 280,
+    comboWindow: 600,
+    combo: [
+      { type: 'projectile', damage: 0.8, texture: 'arrow', speed: 660, range: 420, size: 12, breakAmt: 6, knockback: 20, duration: 110, recovery: 120, anim: 'aim' },
+      { type: 'projectile', damage: 0.8, texture: 'arrow', speed: 660, range: 420, size: 12, breakAmt: 6, knockback: 20, duration: 110, recovery: 120, anim: 'aim' },
+      { type: 'multishot', damage: 0.75, count: 3, spread: 14, texture: 'arrow', speed: 620, range: 400, size: 12, breakAmt: 8, knockback: 90, duration: 200, recovery: 320, anim: 'volley', impact: 'medium' },
+    ],
+    skills: ['triple_shot', 'pierce_shot', 'arrow_rain'],
+  },
+  caster: {
+    id: 'caster',
+    color: 0xc98bff,
+    sprite: 'wizzard_m',
+    weaponAnim: 'staff',
+    base: { hp: 115, mp: 80, atk: 12, def: 4, speed: 195, crit: 0.07, mpRegen: 2.6, hpPerLevel: 11, mpPerLevel: 7, atkPerLevel: 2.4 },
+    engageRange: 250,
+    comboWindow: 700,
+    combo: [
+      { type: 'projectile', damage: 0.9, texture: 'proj_bolt', speed: 520, range: 380, size: 14, breakAmt: 8, knockback: 30, duration: 150, recovery: 150, anim: 'thrust' },
+      { type: 'projectile', damage: 0.9, texture: 'proj_bolt', speed: 520, range: 380, size: 14, breakAmt: 8, knockback: 30, duration: 150, recovery: 150, anim: 'thrust' },
+      { type: 'aoe_forward', damage: 1.5, offset: 120, radius: 75, breakAmt: 20, knockback: 200, duration: 260, recovery: 380, anim: 'cast', color: 0xc98bff, impact: 'heavy' },
+    ],
+    skills: ['fire_burst', 'frost_nova', 'soma_shield'],
+  },
+};
