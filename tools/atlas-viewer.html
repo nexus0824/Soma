@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Atlas Viewer</title>
+<style>
+  body { margin: 0; background: #202430; color: #fff; font: 12px monospace; }
+  canvas { image-rendering: pixelated; display: block; }
+  #bar { padding: 6px; }
+</style>
+</head>
+<body>
+<div id="bar">src: <input id="src" size="50" value="../assets/atlas/atlas_walls_low-16x16.png"> tile: <input id="tw" size="3" value="16"> x <input id="th" size="3" value="16"> zoom: <input id="zoom" size="2" value="8"> <button id="go">load</button></div>
+<canvas id="c"></canvas>
+<script>
+  const q = new URLSearchParams(location.search);
+  for (const k of ['src', 'tw', 'th', 'zoom']) if (q.get(k)) document.getElementById(k).value = q.get(k);
+  function load() {
+    const src = document.getElementById('src').value;
+    const tw = +document.getElementById('tw').value;
+    const th = +document.getElementById('th').value;
+    const z = +document.getElementById('zoom').value;
+    const img = new Image();
+    img.onload = () => {
+      const c = document.getElementById('c');
+      const cols = Math.floor(img.width / tw);
+      const rows = Math.floor(img.height / th);
+      const crop = (q.get('crop') || `0,0,${cols},${rows}`).split(',').map(Number);
+      const [cx, cy, cw, ch] = crop;
+      c.width = cw * tw * z;
+      c.height = ch * th * z;
+      const ctx = c.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+      ctx.fillStyle = '#7a3f9b';
+      ctx.fillRect(0, 0, c.width, c.height);
+      ctx.drawImage(img, cx * tw, cy * th, cw * tw, ch * th, 0, 0, c.width, c.height);
+      ctx.strokeStyle = 'rgba(255,255,0,0.6)';
+      ctx.fillStyle = '#ffff00';
+      ctx.font = `${Math.max(10, z * 1.4)}px monospace`;
+      for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
+        ctx.strokeRect(x * tw * z + 0.5, y * th * z + 0.5, tw * z - 1, th * z - 1);
+        ctx.fillText(String((y + cy) * cols + x + cx), x * tw * z + 2, y * th * z + z * 1.4);
+      }
+    };
+    img.src = src;
+  }
+  document.getElementById('go').onclick = load;
+  load();
+</script>
+</body>
+</html>

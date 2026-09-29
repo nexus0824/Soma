@@ -1,0 +1,10 @@
+{
+  "name": "soma-html5",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node dev-server.js",
+    "atlas": "node tools/build-atlas.mjs assets/raw/0x72_DungeonTilesetII_v1.7 assets/atlas",
+    "check": "node tools/check.mjs"
+  }
+}
