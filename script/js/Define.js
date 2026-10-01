@@ -1,5 +1,5 @@
-export const GAME_WIDTH = 540;
-export const GAME_HEIGHT = 960;
+export const GAME_WIDTH = 960;
+export const GAME_HEIGHT = 540;
 export const TILE = 48;
 export const PIXEL_SCALE = 3;
 export const MAP_COLS = 44;

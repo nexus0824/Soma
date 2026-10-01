@@ -12,7 +12,7 @@ export default {
     choose: '캐릭터를 선택하세요',
     companionNote: '나머지 두 명은 AI 동료로 동행',
     hintPc: 'PC: WASD/방향키 이동 · 클릭한 방향으로 공격 (J도 가능, 연타로 3단 콤보) · 우클릭/Space 대시(무적·후딜 캔슬) · K / L / ; 스킬 · I 가방',
-    hintMobile: '모바일: 왼쪽 아래 조이스틱 · 오른쪽 아래 버튼',
+    hintMobile: '모바일: 가로로 들고 왼쪽 조이스틱 · 오른쪽 버튼',
     credit: 'Sprites: 0x72 DungeonTileset II (CC0)',
     language: '언어: {name}',
   },

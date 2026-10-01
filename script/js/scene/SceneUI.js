@@ -426,18 +426,21 @@ export default class SceneUI extends Phaser.Scene {
       this.addText(c, x, y, line, 14, '#ffffff');
       y += 24;
     }
-    y += 12;
-    this.addText(c, x, y, t('panel.equipped'), 16, '#8be3ff', { fontStyle: 'bold' });
-    y += 28;
+    const CH = LAYOUT.character;
+    const column = CH.equipY !== null && CH.equipY !== undefined;
+    let ex = column ? CH.equipX : x;
+    let ey = column ? CH.equipY : y + 12;
+    this.addText(c, ex, ey, t('panel.equipped'), 16, '#8be3ff', { fontStyle: 'bold' });
+    ey += 28;
     for (const slot of EQUIP_SLOTS) {
       const item = p.equipment[slot.id];
-      this.addText(c, x, y, equipSlotLabel(slot.id), 12, '#9aa4b8');
-      if (item) this.addText(c, x + 70, y, `${itemName(item)}   ${itemSummary(item)}`, 12, RARITY[item.rarity].css, { wordWrap: { width: GAME_WIDTH - 130 } });
-      else this.addText(c, x + 70, y, t('panel.emptySlot'), 12, '#6b7386');
-      y += 24;
+      this.addText(c, ex, ey, equipSlotLabel(slot.id), 12, '#9aa4b8');
+      if (item) this.addText(c, ex + 70, ey, `${itemName(item)}   ${itemSummary(item)}`, 12, RARITY[item.rarity].css, { wordWrap: { width: CH.equipWrap } });
+      else this.addText(c, ex + 70, ey, t('panel.emptySlot'), 12, '#6b7386');
+      ey += 24;
     }
-    y += 8;
-    this.addText(c, x, y, t('panel.comboNote'), 11, '#8a94a8', { wordWrap: { width: GAME_WIDTH - 60 } });
+    const noteY = column ? y + 12 : ey + 8;
+    this.addText(c, x, noteY, t('panel.comboNote'), 11, '#8a94a8', { wordWrap: { width: CH.noteWrap } });
   }
 
   invSelectionValid(p) {
@@ -447,10 +450,11 @@ export default class SceneUI extends Phaser.Scene {
     return !!p.equipment[sel.slotId];
   }
 
-  gridOrigin(cols) {
+  gridLeft(cols, x) {
     const I = LAYOUT.inventory;
     const w = cols * I.cell + (cols - 1) * I.gap;
-    return LAYOUT.panel.x + (LAYOUT.panel.w - w) / 2 + I.cell / 2;
+    const left = x === null || x === undefined ? LAYOUT.panel.x + (LAYOUT.panel.w - w) / 2 : x;
+    return left + I.cell / 2;
   }
 
   itemCell(c, x, y, item, opts = {}) {
@@ -477,16 +481,15 @@ export default class SceneUI extends Phaser.Scene {
   buildTabInventory(c, startY) {
     const p = this.subject();
     const I = LAYOUT.inventory;
-    const x0 = LAYOUT.panel.x + 20;
     if (!this.invSelectionValid(p)) this.invSelection = null;
     const sel = this.invSelection;
-    this.addText(c, x0, startY, t('panel.equipmentTitle'), 16, '#8be3ff', { fontStyle: 'bold' });
-    const dollX = this.gridOrigin(I.cols);
+    const dollX = this.gridLeft(I.doll.cols, I.doll.x);
+    this.addText(c, dollX - I.cell / 2, I.doll.y - 26, t('panel.equipmentTitle'), 16, '#8be3ff', { fontStyle: 'bold' });
     EQUIP_SLOTS.forEach((slot, i) => {
-      const col = i % I.cols;
-      const row = Math.floor(i / I.cols);
+      const col = i % I.doll.cols;
+      const row = Math.floor(i / I.doll.cols);
       const x = dollX + col * (I.cell + I.gap);
-      const y = I.dollY + I.cell / 2 + row * (I.cell + I.gap);
+      const y = I.doll.y + I.cell / 2 + row * (I.cell + I.gap);
       const item = p.equipment[slot.id];
       this.itemCell(c, x, y, item, {
         slotType: slot.type,
@@ -499,14 +502,13 @@ export default class SceneUI extends Phaser.Scene {
         },
       });
     });
-    const bagTitleY = I.bagY - 26;
-    this.addText(c, x0, bagTitleY, t('panel.bagTitle', { n: p.inventory.length, max: MAX_INVENTORY }), 16, '#ffffff', { fontStyle: 'bold' });
-    const bagX = this.gridOrigin(I.cols);
+    const bagX = this.gridLeft(I.bag.cols, I.bag.x);
+    this.addText(c, bagX - I.cell / 2, I.bag.y - 26, t('panel.bagTitle', { n: p.inventory.length, max: MAX_INVENTORY }), 16, '#ffffff', { fontStyle: 'bold' });
     for (let i = 0; i < MAX_INVENTORY; i++) {
-      const col = i % I.cols;
-      const row = Math.floor(i / I.cols);
+      const col = i % I.bag.cols;
+      const row = Math.floor(i / I.bag.cols);
       const x = bagX + col * (I.cell + I.gap);
-      const y = I.bagY + I.cell / 2 + row * (I.cell + I.gap);
+      const y = I.bag.y + I.cell / 2 + row * (I.cell + I.gap);
       const item = p.inventory[i] || null;
       this.itemCell(c, x, y, item, {
         upgrade: item ? isUpgrade(p.equipment, item) : false,
@@ -522,13 +524,13 @@ export default class SceneUI extends Phaser.Scene {
   }
 
   buildItemDetail(c, p, sel) {
-    const I = LAYOUT.inventory;
-    const P = LAYOUT.panel;
-    const x = P.x + 16;
-    const w = P.w - 32;
-    const top = I.detailY;
-    const h = P.bottomY - 30 - top;
-    c.add(this.add.rectangle(P.x + P.w / 2, top + h / 2, w, h, 0x0f121c, 0.9).setStrokeStyle(1, 0x3d4a66));
+    const D = LAYOUT.inventory.detail;
+    const x = D.x;
+    const w = D.w;
+    const top = D.y;
+    const h = D.h;
+    const by = top + h - 26;
+    c.add(this.add.rectangle(x + w / 2, top + h / 2, w, h, 0x0f121c, 0.9).setStrokeStyle(1, 0x3d4a66));
     if (!sel) {
       this.addText(c, x + 12, top + 14, t('panel.detailHint'), 12, '#6b7386', { wordWrap: { width: w - 24 } });
       return;
@@ -547,7 +549,6 @@ export default class SceneUI extends Phaser.Scene {
       if (!cur) this.addText(c, x + 12, y, t('panel.compareEmpty'), 11, '#7dff9a');
       else if (item.score > cur.score) this.addText(c, x + 12, y, t('panel.compareBetter', { name: itemName(cur), score: cur.score }), 11, '#7dff9a', { wordWrap: { width: w - 24 } });
       else this.addText(c, x + 12, y, t('panel.compareWorse', { name: itemName(cur), score: cur.score }), 11, '#ff9d5c', { wordWrap: { width: w - 24 } });
-      const by = P.bottomY - 56;
       const slots = equipSlotsFor(item.slot);
       const btnW = slots.length > 1 ? 150 : 120;
       let bx = x + 12 + btnW / 2;
@@ -571,7 +572,7 @@ export default class SceneUI extends Phaser.Scene {
       }, 0x6b4a2b, 12);
       return;
     }
-    this.makeButton(c, x + 12 + 60, P.bottomY - 56, 120, 30, t('panel.unequip'), () => {
+    this.makeButton(c, x + 12 + 60, by, 120, 30, t('panel.unequip'), () => {
       if (p.inventory.length >= MAX_INVENTORY) {
         this.log(t('panel.bagFull'), '#ff9d5c');
         return;
