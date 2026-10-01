@@ -41,8 +41,15 @@ export const ENEMIES = {
     sprite: 'chort', scale: 3, bodyRadius: 5, hp: 135, atk: 23, def: 3, speed: 185, xp: 30, gold: 5, color: 0xff5c5c,
     behavior: 'chase', attackRange: 32, attackCooldown: 650, windup: 200, breakMax: 60, aggroRange: 400,
   },
+  mimic: {
+    sprite: 'chest_mimic', scale: 3, bodyRadius: 7, hp: 190, atk: 24, def: 4, speed: 150, xp: 40, gold: 8, color: 0xd9a066,
+    behavior: 'chase', attackRange: 36, attackCooldown: 900, windup: 300, breakMax: 90, aggroRange: 420, knockbackResist: 0.5, mimic: true,
+    abilities: [
+      { type: 'charge', first: 800, cooldown: 4000, range: 260, minRange: 70, windup: 450, speed: 520, duration: 350, damageMul: 1.3, recovery: 300, wallStun: 700 },
+    ],
+  },
   guardian: {
-    sprite: 'big_demon', scale: 3, bodyRadius: 11, hp: 1100, atk: 36, def: 8, speed: 100, xp: 320, gold: 60, color: 0xff5c8a,
+    sprite: 'big_demon', scale: 3, bodyRadius: 11, hp: 1500, atk: 36, def: 8, speed: 100, xp: 320, gold: 60, color: 0xff5c8a,
     behavior: 'chase', attackRange: 64, attackCooldown: 1300, windup: 480, projectileSpeed: 280,
     breakMax: 240, aggroRange: 600, boss: true, knockbackResist: 1,
     abilities: [
@@ -55,6 +62,12 @@ export const ENEMIES = {
 };
 
 import { GAME_RNG } from '../core/Rng.js';
+
+export const DROP_MUL = { goblin: 0.7, bomber: 0.7, brute: 1.5, warden: 1.5, chort: 1.5, ogre: 2.0 };
+
+export function dropMulFor(typeId) {
+  return DROP_MUL[typeId] === undefined ? 1 : DROP_MUL[typeId];
+}
 
 export function pickWeighted(table, rng = GAME_RNG) {
   const total = table.reduce((s, t) => s + t.w, 0);

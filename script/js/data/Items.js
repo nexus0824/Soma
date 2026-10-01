@@ -6,11 +6,11 @@ import { GAME_RNG } from '../core/Rng.js';
 const PCT_STATS = new Set(['atkMul', 'crit', 'lifesteal', 'cdr']);
 
 export const AFFIXES = [
-  { stat: 'atk', min: 2, max: 6, perFloor: 0.8 },
-  { stat: 'atkMul', min: 0.05, max: 0.15, perFloor: 0.005 },
-  { stat: 'def', min: 1, max: 4, perFloor: 0.5 },
-  { stat: 'hp', min: 10, max: 30, perFloor: 4 },
-  { stat: 'mp', min: 6, max: 18, perFloor: 2 },
+  { stat: 'atk', min: 4, max: 10, perFloor: 0.8 },
+  { stat: 'atkMul', min: 0.08, max: 0.2, perFloor: 0.006 },
+  { stat: 'def', min: 2, max: 5, perFloor: 0.35 },
+  { stat: 'hp', min: 20, max: 60, perFloor: 4 },
+  { stat: 'mp', min: 10, max: 24, perFloor: 2.5 },
   { stat: 'crit', min: 0.02, max: 0.06, perFloor: 0.003 },
   { stat: 'speed', min: 8, max: 20, perFloor: 1 },
   { stat: 'mpRegen', min: 0.3, max: 0.8, perFloor: 0.05 },
@@ -19,18 +19,24 @@ export const AFFIXES = [
 ];
 
 export const SLOTS = {
-  weapon: { stat: 'atk', min: 3, max: 6, perFloor: 1.2, weight: 3, icon: null },
-  head: { stat: 'def', min: 1, max: 2, perFloor: 0.4, weight: 1, icon: 'icon_head' },
+  weapon: { stat: 'atk', min: 10, max: 16, perFloor: 1.4, weight: 3, icon: null },
+  head: { stat: 'def', min: 2, max: 4, perFloor: 0.35, weight: 1, icon: 'icon_head' },
   cloak: { stat: 'speed', min: 4, max: 10, perFloor: 0.5, weight: 1, icon: 'icon_cloak' },
-  chest: { stat: 'def', min: 2, max: 4, perFloor: 0.8, weight: 2, icon: 'icon_chest' },
-  legs: { stat: 'hp', min: 8, max: 16, perFloor: 3, weight: 1, icon: 'icon_legs' },
+  chest: { stat: 'def', min: 3, max: 6, perFloor: 0.6, weight: 2, icon: 'icon_chest' },
+  legs: { stat: 'hp', min: 20, max: 40, perFloor: 3.5, weight: 1, icon: 'icon_legs' },
   boots: { stat: 'speed', min: 3, max: 8, perFloor: 0.4, weight: 1, icon: 'icon_boots' },
-  gloves: { stat: 'atk', min: 1, max: 3, perFloor: 0.5, weight: 1, icon: 'icon_gloves' },
+  gloves: { stat: 'atk', min: 2, max: 5, perFloor: 0.5, weight: 1, icon: 'icon_gloves' },
   ring: { stat: 'crit', min: 0.02, max: 0.05, perFloor: 0.002, weight: 2, icon: 'icon_ring' },
-  necklace: { stat: 'mp', min: 6, max: 14, perFloor: 2, weight: 1, icon: 'icon_necklace' },
+  necklace: { stat: 'mp', min: 10, max: 20, perFloor: 2.5, weight: 1, icon: 'icon_necklace' },
 };
 
 export const SLOT_IDS = Object.keys(SLOTS);
+
+export const RARITY_GROWTH = {
+  magic: { perLevel: 0, perBonus: 0.5 },
+  rare: { perLevel: 0.25, perBonus: 0.8 },
+  unique: { perLevel: 0.05, perBonus: 0.15 },
+};
 
 export const EQUIP_SLOTS = [
   { id: 'weapon', type: 'weapon' },
@@ -105,7 +111,7 @@ export function rollRarity(floor, minRarity, bonus = 0, rng = GAME_RNG) {
   const minIdx = minRarity ? order.indexOf(minRarity) : 0;
   const table = order.slice(minIdx).map((id) => ({
     id,
-    w: RARITY[id].weight + (id === 'unique' ? floor * 0.4 + bonus * 0.5 : id === 'rare' ? floor * 0.8 + bonus : id === 'magic' ? bonus : 0),
+    w: RARITY[id].weight + (RARITY_GROWTH[id] ? RARITY_GROWTH[id].perLevel * floor + RARITY_GROWTH[id].perBonus * bonus : 0),
   }));
   const total = table.reduce((s, tbl) => s + tbl.w, 0);
   let roll = rng.random() * total;
@@ -133,13 +139,13 @@ export function createItem(floor, clsId, slot, rarityId, opts = {}) {
   const rarity = rarityId || rollRarity(floor, opts.minRarity, opts.rarityBonus || 0, rng);
   const slotDef = SLOTS[slotId];
   const tier = Math.min(2, Math.floor((floor - 1) / 5));
-  const base = { stat: slotDef.stat, value: roundStat(slotDef.stat, rollValue(slotDef, floor, rng) * (rarity === 'unique' ? 1.4 : 1)) };
+  const base = { stat: slotDef.stat, value: roundStat(slotDef.stat, rollValue(slotDef, floor, rng) * RARITY[rarity].baseMul) };
   const pool = AFFIXES.filter((a) => a.stat !== slotDef.stat);
   const affixes = [];
   for (let i = 0; i < RARITY[rarity].affixes && pool.length; i++) {
     const idx = Math.floor(rng.random() * pool.length);
     const def = pool.splice(idx, 1)[0];
-    affixes.push({ stat: def.stat, value: roundStat(def.stat, rollValue(def, floor, rng)) });
+    affixes.push({ stat: def.stat, value: roundStat(def.stat, rollValue(def, floor, rng) * RARITY[rarity].affixMul) });
   }
   const item = {
     uid: `${Date.now().toString(36)}${(uidSeq++).toString(36)}`,

@@ -21,10 +21,10 @@ export const DEPTH = {
 };
 
 export const RARITY = {
-  common: { color: 0xd0d0d0, css: '#d0d0d0', affixes: 0, weight: 60, price: 1 },
-  magic: { color: 0x5ea9ff, css: '#5ea9ff', affixes: 1, weight: 28, price: 2.5 },
-  rare: { color: 0xffd23f, css: '#ffd23f', affixes: 2, weight: 10, price: 6 },
-  unique: { color: 0xff7b3a, css: '#ff7b3a', affixes: 3, weight: 2, price: 15 },
+  common: { color: 0xd0d0d0, css: '#d0d0d0', affixes: 0, weight: 60, price: 1, baseMul: 1, affixMul: 1 },
+  magic: { color: 0x5ea9ff, css: '#5ea9ff', affixes: 1, weight: 28, price: 2.5, baseMul: 1.1, affixMul: 1.1 },
+  rare: { color: 0xffd23f, css: '#ffd23f', affixes: 2, weight: 7, price: 6, baseMul: 1.25, affixMul: 1.2 },
+  unique: { color: 0xff7b3a, css: '#ff7b3a', affixes: 3, weight: 0.5, price: 15, baseMul: 1.5, affixMul: 1.35 },
 };
 
 export function xpToNext(level) {

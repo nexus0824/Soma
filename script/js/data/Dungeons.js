@@ -6,6 +6,7 @@ export const DUNGEONS = {
     id: 'ruins',
     order: 0, floors: 8, baseLevel: 1, requires: null, boss: 'guardian', bossEvery: 4,
     tint: 0xffffff, rarityBonus: 0, dropBias: { slot: 'weapon', weight: 0.45 }, modifiers: [],
+    enemyScale: { hp: 0.22 }, bossEnrage: { after: 150000 },
     spawn: [
       { id: 'goblin', w: 60 },
       { id: 'shaman', w: 25 },
@@ -13,12 +14,13 @@ export const DUNGEONS = {
       { id: 'ogre', w: 12, minFloor: 3 },
       { id: 'bomber', w: 12, minFloor: 4 },
     ],
-    gen: { roomCount: 8, roomW: [5, 9], roomH: [4, 7] },
+    gen: { roomCount: 8, roomW: [6, 10], roomH: [5, 8] },
   },
   catacombs: {
     id: 'catacombs',
-    order: 1, floors: 10, baseLevel: 9, requires: 'ruins', boss: 'guardian', bossEvery: 5,
+    order: 1, floors: 10, baseLevel: 9, requires: null, boss: 'guardian', bossEvery: 5,
     tint: 0xa9b8d8, rarityBonus: 3, dropBias: { slot: 'chest', weight: 0.45 }, modifiers: ['ironhide'],
+    enemyScale: { hp: 0.24 },
     spawn: [
       { id: 'skeleton', w: 55 },
       { id: 'shaman', w: 25 },
@@ -27,12 +29,13 @@ export const DUNGEONS = {
       { id: 'bomber', w: 10, minFloor: 3 },
       { id: 'chort', w: 12, minFloor: 6 },
     ],
-    gen: { roomCount: 11, roomW: [4, 7], roomH: [3, 6] },
+    gen: { roomCount: 11, roomW: [5, 9], roomH: [4, 7] },
   },
   furnace: {
     id: 'furnace',
-    order: 2, floors: 10, baseLevel: 19, requires: 'catacombs', boss: 'guardian', bossEvery: 5,
+    order: 2, floors: 10, baseLevel: 19, requires: null, boss: 'guardian', bossEvery: 5,
     tint: 0xffb28a, rarityBonus: 6, dropBias: { slot: 'ring', weight: 0.45 }, modifiers: ['swift'],
+    enemyScale: { hp: 0.26 },
     spawn: [
       { id: 'chort', w: 45 },
       { id: 'ogre', w: 35 },
@@ -40,12 +43,13 @@ export const DUNGEONS = {
       { id: 'skeleton', w: 20 },
       { id: 'warden', w: 15, minFloor: 4 },
     ],
-    gen: { roomCount: 9, roomW: [6, 10], roomH: [5, 8] },
+    gen: { roomCount: 9, roomW: [7, 11], roomH: [6, 8] },
   },
   abyss: {
     id: 'abyss',
-    order: 3, floors: Infinity, endless: true, baseLevel: 30, perFloor: 0.2, requires: 'furnace', boss: 'guardian', bossEvery: 5,
+    order: 3, floors: Infinity, endless: true, baseLevel: 30, perFloor: 0.2, requires: null, boss: 'guardian', bossEvery: 5,
     tint: 0xb48cff, rarityBonus: 10, dropBias: null, modifiers: [],
+    enemyScale: { hp: 0.28 }, bossEnrage: { after: 90000, perStep: 0.15 },
     spawn: [
       { id: 'goblin', w: 30 },
       { id: 'shaman', w: 25 },
@@ -56,7 +60,7 @@ export const DUNGEONS = {
       { id: 'warden', w: 20 },
       { id: 'bomber', w: 15 },
     ],
-    gen: { roomCount: 10, roomW: [5, 9], roomH: [4, 7] },
+    gen: { roomCount: 10, roomW: [6, 10], roomH: [5, 8] },
   },
 };
 

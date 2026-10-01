@@ -4,7 +4,7 @@ export const CLASSES = {
     color: 0x4fd1ff,
     sprite: 'knight_m',
     weaponAnim: 'sword',
-    base: { hp: 150, mp: 40, atk: 13, def: 6, speed: 190, crit: 0.05, mpRegen: 1.4, hpPerLevel: 15, mpPerLevel: 3, atkPerLevel: 2.2 },
+    base: { hp: 150, mp: 40, atk: 5, def: 6, speed: 190, crit: 0.05, mpRegen: 1.4, hpPerLevel: 15, mpPerLevel: 3, atkPerLevel: 1.4 },
     engageRange: 70,
     comboWindow: 700,
     combo: [
@@ -19,7 +19,7 @@ export const CLASSES = {
     color: 0xffd23f,
     sprite: 'elf_m',
     weaponAnim: 'bow',
-    base: { hp: 105, mp: 50, atk: 11, def: 3, speed: 215, crit: 0.12, mpRegen: 1.6, hpPerLevel: 10, mpPerLevel: 4, atkPerLevel: 2.0 },
+    base: { hp: 105, mp: 50, atk: 4, def: 3, speed: 215, crit: 0.12, mpRegen: 1.6, hpPerLevel: 10, mpPerLevel: 4, atkPerLevel: 1.25 },
     engageRange: 280,
     comboWindow: 600,
     combo: [
@@ -34,7 +34,7 @@ export const CLASSES = {
     color: 0xc98bff,
     sprite: 'wizzard_m',
     weaponAnim: 'staff',
-    base: { hp: 115, mp: 80, atk: 12, def: 4, speed: 195, crit: 0.07, mpRegen: 2.6, hpPerLevel: 11, mpPerLevel: 7, atkPerLevel: 2.4 },
+    base: { hp: 115, mp: 80, atk: 5, def: 4, speed: 195, crit: 0.07, mpRegen: 2.6, hpPerLevel: 11, mpPerLevel: 7, atkPerLevel: 1.5 },
     engageRange: 250,
     comboWindow: 700,
     combo: [
