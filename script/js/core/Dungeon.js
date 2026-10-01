@@ -1,6 +1,7 @@
 import { TILE } from '../Define.js';
 import { AUTOTILE_LOOKUP, neighborMask } from '../data/Autotile.js';
 import { GAME_RNG } from './Rng.js';
+import { ROOM_PLAN, ROOM_RULES, MIMIC } from '../data/Rooms.js';
 
 export const FLOOR_FRAMES = ['floor_1', 'floor_2', 'floor_3', 'floor_4', 'floor_5', 'floor_6', 'floor_7', 'floor_8'];
 export const WALL_RING = 1;
@@ -44,9 +45,7 @@ export function generateDungeon(cols, rows, gen = {}, rng = GAME_RNG) {
       carve(x + 1, y);
     }
   };
-  for (let i = 1; i < rooms.length; i++) {
-    const a = rooms[i - 1];
-    const b = rooms[i];
+  for (const [a, b] of corridorPairs(rooms, gen.loops === undefined ? 0.15 : gen.loops, rng)) {
     if (rng.chance(0.5)) {
       hLine(a.cy, a.cx, b.cx);
       vLine(b.cx, a.cy, b.cy);
@@ -66,7 +65,53 @@ export function generateDungeon(cols, rows, gen = {}, rng = GAME_RNG) {
       exitRoom = r;
     }
   }
+  assignRoomTypes(rooms, spawnRoom, exitRoom, gen.floor || 1, rng, gen.roomRng || rng, gen.roomPlan || ROOM_PLAN);
   return { grid, rooms, spawnRoom, exitRoom };
+}
+
+function corridorPairs(rooms, loops, rng) {
+  const edges = [];
+  for (let i = 0; i < rooms.length; i++) {
+    for (let j = i + 1; j < rooms.length; j++) {
+      const a = rooms[i];
+      const b = rooms[j];
+      edges.push({ i, j, d: (a.cx - b.cx) ** 2 + (a.cy - b.cy) ** 2 });
+    }
+  }
+  edges.sort((e1, e2) => e1.d - e2.d);
+  const parent = rooms.map((_, i) => i);
+  const find = (i) => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  const chosen = [];
+  const rest = [];
+  for (const e of edges) {
+    const a = find(e.i);
+    const b = find(e.j);
+    if (a === b) {
+      rest.push(e);
+      continue;
+    }
+    parent[a] = b;
+    chosen.push(e);
+  }
+  const shortRest = rest.slice(0, Math.ceil(rest.length * 0.3));
+  for (const e of shortRest) if (rng.chance(loops)) chosen.push(e);
+  return chosen.map((e) => [rooms[e.i], rooms[e.j]]);
+}
+
+function assignRoomTypes(rooms, spawnRoom, exitRoom, floor, rng, roomRng, plans) {
+  for (const r of rooms) r.type = 'normal';
+  spawnRoom.type = 'spawn';
+  exitRoom.type = 'exit';
+  const pool = rng.shuffle(rooms.filter((r) => r.type === 'normal'));
+  for (const plan of plans) {
+    if (rooms.length < plan.minRooms || floor < plan.minFloor) continue;
+    if (plan.chance !== undefined && plan.chance < 1 && !roomRng.chance(plan.chance)) continue;
+    for (let i = 0; i < plan.count && pool.length > ROOM_RULES.minNormal; i++) pool.pop().type = plan.type;
+  }
+  for (const r of rooms) {
+    if (r.type !== 'treasure') continue;
+    r.mimic = floor >= MIMIC.minFloor && roomRng.chance(MIMIC.chance);
+  }
 }
 
 export function buildTileIndices(grid, ring = WALL_RING, rng = GAME_RNG) {
