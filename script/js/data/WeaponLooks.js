@@ -1,3 +1,5 @@
+import { GAME_RNG } from '../core/Rng.js';
+
 export const WEAPON_LOOKS = {
   blade: [
     { id: 'rusty_sword', frame: 'weapon_rusty_sword', anim: 'sword', minTier: 0 },
@@ -26,11 +28,11 @@ export function lookById(clsId, id) {
   return WEAPON_LOOKS[clsId].find((l) => l.id === id) || null;
 }
 
-export function rollLook(clsId, tier) {
+export function rollLook(clsId, tier, rng = GAME_RNG) {
   const pool = WEAPON_LOOKS[clsId].filter((l) => l.minTier <= tier);
   const top = Math.max(...pool.map((l) => l.minTier));
   const best = pool.filter((l) => l.minTier === top);
-  return best[Math.floor(Math.random() * best.length)];
+  return rng.pick(best);
 }
 
 export function weaponLookFor(clsId, item) {

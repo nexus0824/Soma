@@ -1,4 +1,5 @@
 import { MODIFIER_IDS } from './Modifiers.js';
+import { Rng, hashString, GAME_RNG } from '../core/Rng.js';
 
 export const DUNGEONS = {
   ruins: {
@@ -80,38 +81,21 @@ export function isBossFloor(def, floor, floors) {
   return floor % def.bossEvery === 0 && floor < floors;
 }
 
-function hashString(s) {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
-function seededRandom(seed) {
-  let s = seed || 1;
-  return () => {
-    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
-    return s / 4294967296;
-  };
-}
-
 export function dateKey(date = new Date()) {
   return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
 }
 
 export function getDaily(character, date = new Date()) {
   const key = dateKey(date);
-  const rng = seededRandom(hashString(`soma-daily-${key}`));
+  const rng = new Rng(hashString(`soma-daily-${key}`));
   const unlocked = DUNGEON_ORDER.filter((id) => !DUNGEONS[id].endless && isUnlocked(DUNGEONS[id], character));
-  const rolled = unlocked[Math.floor(rng() * unlocked.length)] || 'ruins';
+  const rolled = rng.pick(unlocked) || 'ruins';
   const pinned = character.progress.dailyPick;
   const dungeonId = pinned && pinned.key === key ? pinned.dungeonId : rolled;
   character.progress.dailyPick = { key, dungeonId };
   const pool = MODIFIER_IDS.filter((id) => id !== 'bounty');
   const mods = [];
-  while (mods.length < 2 && pool.length) mods.push(pool.splice(Math.floor(rng() * pool.length), 1)[0]);
+  while (mods.length < 2 && pool.length) mods.push(pool.splice(Math.floor(rng.next() * pool.length), 1)[0]);
   mods.push('bounty');
   return { key, dungeonId, modifiers: mods, floors: DAILY_FLOORS, done: character.progress.dailyDone === key };
 }
@@ -125,5 +109,6 @@ export function makeRun(dungeonId, opts = {}) {
     modifiers: opts.modifiers ?? def.modifiers,
     daily: !!opts.daily,
     dateKey: opts.dateKey || null,
+    seed: opts.seed ?? (opts.daily && opts.dateKey ? hashString(`soma-daily-run-${opts.dateKey}`) : GAME_RNG.between(1, 2147483646)),
   };
 }

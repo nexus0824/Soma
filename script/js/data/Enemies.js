@@ -54,9 +54,11 @@ export const ENEMIES = {
   },
 };
 
-export function pickWeighted(table) {
+import { GAME_RNG } from '../core/Rng.js';
+
+export function pickWeighted(table, rng = GAME_RNG) {
   const total = table.reduce((s, t) => s + t.w, 0);
-  let roll = Math.random() * total;
+  let roll = rng.random() * total;
   for (const t of table) {
     roll -= t.w;
     if (roll <= 0) return t.id;

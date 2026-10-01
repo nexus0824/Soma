@@ -6,6 +6,7 @@ export default class Projectile extends Phaser.Physics.Arcade.Sprite {
   }
 
   fire(owner, x, y, angle, cfg) {
+    this.id = this.scene.registerEntity(this);
     this.owner = owner;
     this.cfg = cfg;
     if (cfg.atlasFrame) this.setTexture('dungeon', cfg.atlasFrame);
@@ -31,8 +32,13 @@ export default class Projectile extends Phaser.Physics.Arcade.Sprite {
     if (Phaser.Math.Distance.Between(this.startX, this.startY, this.x, this.y) > this.cfg.range) this.kill();
   }
 
+  netState() {
+    return { id: this.id, owner: this.owner, x: Math.round(this.x), y: Math.round(this.y), rotation: Math.round(this.rotation * 1000) / 1000, texture: this.cfg ? this.cfg.atlasFrame || this.cfg.texture : null };
+  }
+
   kill() {
     if (!this.active) return;
+    if (this.scene && this.scene.unregisterEntity) this.scene.unregisterEntity(this);
     this.setActive(false).setVisible(false);
     this.body.stop();
     this.body.enable = false;

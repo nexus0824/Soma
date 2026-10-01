@@ -19,6 +19,7 @@ import { applyHits } from '../combat/HitFeedback.js';
 import HazardManager from '../combat/Hazards.js';
 import SaveManager from '../manager/SaveManager.js';
 import { MAX_INVENTORY } from '../Define.js';
+import { GAME_RNG, floorRng } from '../core/Rng.js';
 
 export default class SceneGame extends Phaser.Scene {
   constructor() {
@@ -28,6 +29,7 @@ export default class SceneGame extends Phaser.Scene {
   init(data) {
     this.character = data.character;
     this.run = this.character.run;
+    if (!this.run.seed) this.run.seed = GAME_RNG.between(1, 2147483646);
     this.dungeonDef = DUNGEONS[this.run.dungeonId];
     this.floor = this.run.floor;
     this.mods = combineModifiers(this.run.modifiers);
@@ -43,6 +45,8 @@ export default class SceneGame extends Phaser.Scene {
     this.combatNow = 0;
     this.fxTweens = new Phaser.Tweens.TweenManager(this);
     this.hazards = new HazardManager(this);
+    this.entities = new Map();
+    this.entitySeq = 1;
     this.fxTweens.start();
     this.isBossFloor = isBossFloor(this.dungeonDef, this.floor, this.run.floors);
     this.character.setBest(this.run.dungeonId, this.floor);
@@ -119,8 +123,25 @@ export default class SceneGame extends Phaser.Scene {
     InputState.reset();
   }
 
+  registerEntity(obj) {
+    const id = this.entitySeq++;
+    this.entities.set(id, obj);
+    return id;
+  }
+
+  unregisterEntity(obj) {
+    if (obj.id !== undefined && obj.id !== null) this.entities.delete(obj.id);
+  }
+
+  entityById(id) {
+    if (id === undefined || id === null) return null;
+    const obj = this.entities.get(id);
+    return obj && obj.active ? obj : null;
+  }
+
   onShutdown() {
     this.clearHitStop();
+    if (this.entities) this.entities.clear();
     if (this.hazards) this.hazards.clear();
     if (this.fxTweens) {
       this.fxTweens.destroy();
@@ -131,7 +152,9 @@ export default class SceneGame extends Phaser.Scene {
   buildMap() {
     const gen = { ...this.dungeonDef.gen };
     gen.roomCount = (gen.roomCount || 8) + Math.min(3, Math.floor(this.floor / 4));
-    this.dungeon = generateDungeon(MAP_COLS, MAP_ROWS, gen);
+    this.mapRng = floorRng(this.run.seed, this.floor, 'map');
+    this.spawnRng = floorRng(this.run.seed, this.floor, 'spawn');
+    this.dungeon = generateDungeon(MAP_COLS, MAP_ROWS, gen, this.mapRng);
     this.nav = new Navigation(this.dungeon.grid);
     const map = this.make.tilemap({ tileWidth: TILE, tileHeight: TILE, width: MAP_COLS, height: MAP_ROWS });
     const floorSet = map.addTilesetImage('floortiles', 'floortiles', TILE, TILE, 0, 0, 0);
@@ -139,7 +162,7 @@ export default class SceneGame extends Phaser.Scene {
     const sets = [floorSet, wallSet];
     this.floorLayer = map.createBlankLayer('floor', sets).setDepth(DEPTH.FLOOR);
     this.layer = map.createBlankLayer('walls', sets).setDepth(DEPTH.FLOOR + 0.5);
-    const { floor, walls } = buildTileIndices(this.dungeon.grid);
+    const { floor, walls } = buildTileIndices(this.dungeon.grid, undefined, this.mapRng);
     for (let y = 0; y < MAP_ROWS; y++) {
       for (let x = 0; x < MAP_COLS; x++) {
         if (floor[y][x] >= 0) this.floorLayer.putTileAt(floorSet.firstgid + floor[y][x], x, y);
@@ -193,16 +216,16 @@ export default class SceneGame extends Phaser.Scene {
     let attempts = 0;
     while (placed < count && candidates.length && attempts < count * 10) {
       attempts++;
-      const room = Phaser.Utils.Array.GetRandom(candidates);
-      const anchorTile = roomRandomTile(room);
+      const room = this.spawnRng.pick(candidates);
+      const anchorTile = roomRandomTile(room, this.spawnRng);
       const anchor = tileToWorld(anchorTile.x, anchorTile.y);
       if (Phaser.Math.Distance.Between(anchor.x, anchor.y, spawn.x, spawn.y) < 300) continue;
-      const packSize = Math.min(count - placed, Phaser.Math.Between(BALANCE.packMin, BALANCE.packMax));
+      const packSize = Math.min(count - placed, this.spawnRng.between(BALANCE.packMin, BALANCE.packMax));
       const cells = this.packCells(anchorTile.x, anchorTile.y, 2);
       for (let i = 0; i < packSize; i++) {
         const cell = cells[i % cells.length];
         const w = tileToWorld(cell.tx, cell.ty);
-        const e = this.addEnemy(pickWeighted(table), w.x, w.y);
+        const e = this.addEnemy(pickWeighted(table, this.spawnRng), w.x, w.y);
         if (e) placed++;
       }
     }
@@ -220,7 +243,7 @@ export default class SceneGame extends Phaser.Scene {
         cells.push({ tx: tx + dx, ty: ty + dy, d: Math.max(Math.abs(dx), Math.abs(dy)) });
       }
     }
-    Phaser.Utils.Array.Shuffle(cells);
+    this.spawnRng.shuffle(cells);
     cells.sort((a, b) => a.d - b.d);
     return cells.length ? cells : [{ tx, ty, d: 0 }];
   }
@@ -231,8 +254,8 @@ export default class SceneGame extends Phaser.Scene {
     let py = spot.y;
     if (jitter) {
       const room = Math.max(0, TILE / 2 - actor.radius - 3);
-      px += Phaser.Math.FloatBetween(-room, room);
-      py += Phaser.Math.FloatBetween(-room, room);
+      px += this.spawnRng.floatBetween(-room, room);
+      py += this.spawnRng.floatBetween(-room, room);
     }
     const b = actor.body;
     const dx = actor.scaleX * (b.offset.x - actor.displayOriginX) + b.width / 2;
@@ -440,8 +463,8 @@ export default class SceneGame extends Phaser.Scene {
 
   onEnemyKilled(e) {
     this.player.gainXp(e.xp);
-    if (e.def.boss || Math.random() < 0.6) {
-      this.dropLoot(e.x, e.y, { kind: 'gold', amount: Math.max(1, Math.round(e.goldValue * Phaser.Math.FloatBetween(0.7, 1.4))) });
+    if (e.def.boss || GAME_RNG.chance(0.6)) {
+      this.dropLoot(e.x, e.y, { kind: 'gold', amount: Math.max(1, Math.round(e.goldValue * GAME_RNG.floatBetween(0.7, 1.4))) });
     }
     const opts = this.itemOpts();
     if (e.def.boss) {
@@ -450,15 +473,15 @@ export default class SceneGame extends Phaser.Scene {
       this.boss = null;
       this.events.emit('log', t('game.bossDown', { name: t(`enemy.${e.typeId}`) }), '#ff8ab0');
       this.cameras.main.shake(300, 0.01);
-    } else if (Math.random() < 0.22 * this.mods.dropChanceMul) {
+    } else if (GAME_RNG.chance(0.22 * this.mods.dropChanceMul)) {
       this.dropLoot(e.x, e.y, { kind: 'item', item: createItem(this.level, this.player.clsId, undefined, undefined, opts) });
     }
     if (this.remaining() - 1 <= 0) this.openPortal();
   }
 
   dropLoot(x, y, payload) {
-    const ox = x + Phaser.Math.Between(-28, 28);
-    const oy = y + Phaser.Math.Between(-20, 20);
+    const ox = x + GAME_RNG.between(-28, 28);
+    const oy = y + GAME_RNG.between(-20, 20);
     const onFloor = this.isFloorAt(ox, oy);
     const loot = new Loot(this, onFloor ? ox : x, onFloor ? oy : y, payload);
     this.loots.add(loot);

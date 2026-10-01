@@ -31,4 +31,29 @@ export const InputState = {
   hasAim(now) {
     return this.aim.active || now < this.aim.until;
   },
+  snapshot() {
+    return {
+      moveX: this.moveX,
+      moveY: this.moveY,
+      attack: this.attack,
+      attackPressed: this.attackPressed,
+      skills: [...this.skills],
+      dodgePressed: this.dodgePressed,
+      dodgeTarget: this.dodgeTarget ? { x: this.dodgeTarget.x, y: this.dodgeTarget.y } : null,
+      aim: { ...this.aim },
+    };
+  },
+  applySnapshot(s) {
+    this.moveX = s.moveX;
+    this.moveY = s.moveY;
+    this.attack = s.attack;
+    this.attackPressed = s.attackPressed;
+    this.skills = [...s.skills];
+    this.dodgePressed = s.dodgePressed;
+    this.dodgeTarget = s.dodgeTarget ? { x: s.dodgeTarget.x, y: s.dodgeTarget.y } : null;
+    this.aim.active = s.aim.active;
+    this.aim.x = s.aim.x;
+    this.aim.y = s.aim.y;
+    this.aim.until = s.aim.until;
+  },
 };

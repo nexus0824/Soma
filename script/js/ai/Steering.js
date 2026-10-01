@@ -1,4 +1,5 @@
 import { BALANCE } from '../data/Balance.js';
+import { GAME_RNG } from '../core/Rng.js';
 
 export function initSteering(actor) {
   actor.desired = new Phaser.Math.Vector2();
@@ -24,7 +25,7 @@ export function computeSeparation(actor, lists, margin) {
       const d2 = dx * dx + dy * dy;
       if (d2 >= minD * minD) continue;
       if (d2 < 1) {
-        const a = Math.random() * Math.PI * 2;
+        const a = GAME_RNG.random() * Math.PI * 2;
         out.x += Math.cos(a);
         out.y += Math.sin(a);
         continue;
@@ -47,7 +48,7 @@ export function trackProgress(actor, time, wantsMove) {
   if (!wantsMove || moved >= BALANCE.stuckMinMove || time < actor.sidestepUntil) return;
   const d = actor.desired;
   const len = Math.hypot(d.x, d.y) || 1;
-  const sign = Math.random() < 0.5 ? 1 : -1;
+  const sign = GAME_RNG.chance(0.5) ? 1 : -1;
   actor.sideDir.set((-d.y / len) * sign, (d.x / len) * sign);
   actor.sidestepUntil = time + BALANCE.sidestepMs;
 }

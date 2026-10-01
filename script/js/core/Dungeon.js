@@ -1,5 +1,6 @@
 import { TILE } from '../Define.js';
 import { AUTOTILE_LOOKUP, neighborMask } from '../data/Autotile.js';
+import { GAME_RNG } from './Rng.js';
 
 export const FLOOR_FRAMES = ['floor_1', 'floor_2', 'floor_3', 'floor_4', 'floor_5', 'floor_6', 'floor_7', 'floor_8'];
 export const WALL_RING = 1;
@@ -8,7 +9,7 @@ function intersects(a, b, pad) {
   return a.x - pad < b.x + b.w && a.x + a.w + pad > b.x && a.y - pad < b.y + b.h && a.y + a.h + pad > b.y;
 }
 
-export function generateDungeon(cols, rows, gen = {}) {
+export function generateDungeon(cols, rows, gen = {}, rng = GAME_RNG) {
   const roomCount = gen.roomCount || 8;
   const roomW = gen.roomW || [5, 9];
   const roomH = gen.roomH || [4, 7];
@@ -17,10 +18,10 @@ export function generateDungeon(cols, rows, gen = {}) {
   let attempts = 0;
   while (rooms.length < roomCount && attempts < 400) {
     attempts++;
-    const w = Phaser.Math.Between(roomW[0], roomW[1]);
-    const h = Phaser.Math.Between(roomH[0], roomH[1]);
-    const x = Phaser.Math.Between(2, cols - w - 3);
-    const y = Phaser.Math.Between(2, rows - h - 3);
+    const w = rng.between(roomW[0], roomW[1]);
+    const h = rng.between(roomH[0], roomH[1]);
+    const x = rng.between(2, cols - w - 3);
+    const y = rng.between(2, rows - h - 3);
     const r = { x, y, w, h, cx: x + Math.floor(w / 2), cy: y + Math.floor(h / 2) };
     if (rooms.some((o) => intersects(r, o, 2))) continue;
     rooms.push(r);
@@ -46,7 +47,7 @@ export function generateDungeon(cols, rows, gen = {}) {
   for (let i = 1; i < rooms.length; i++) {
     const a = rooms[i - 1];
     const b = rooms[i];
-    if (Math.random() < 0.5) {
+    if (rng.chance(0.5)) {
       hLine(a.cy, a.cx, b.cx);
       vLine(b.cx, a.cy, b.cy);
     } else {
@@ -68,7 +69,7 @@ export function generateDungeon(cols, rows, gen = {}) {
   return { grid, rooms, spawnRoom, exitRoom };
 }
 
-export function buildTileIndices(grid, ring = WALL_RING) {
+export function buildTileIndices(grid, ring = WALL_RING, rng = GAME_RNG) {
   const rows = grid.length;
   const cols = grid[0].length;
   const isFloor = (x, y) => y >= 0 && y < rows && x >= 0 && x < cols && grid[y][x] === 1;
@@ -82,7 +83,7 @@ export function buildTileIndices(grid, ring = WALL_RING) {
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < cols; x++) {
       if (isFloor(x, y)) {
-        floor[y][x] = Math.random() < 0.82 ? 0 : Phaser.Math.Between(1, FLOOR_FRAMES.length - 1);
+        floor[y][x] = rng.chance(0.82) ? 0 : rng.between(1, FLOOR_FRAMES.length - 1);
         continue;
       }
       if (!nearFloor(x, y)) continue;
@@ -93,10 +94,10 @@ export function buildTileIndices(grid, ring = WALL_RING) {
   return { floor, walls };
 }
 
-export function roomRandomTile(room) {
+export function roomRandomTile(room, rng = GAME_RNG) {
   return {
-    x: Phaser.Math.Between(room.x + 1, room.x + room.w - 2),
-    y: Phaser.Math.Between(room.y + 1, room.y + room.h - 2),
+    x: rng.between(room.x + 1, room.x + room.w - 2),
+    y: rng.between(room.y + 1, room.y + room.h - 2),
   };
 }
 

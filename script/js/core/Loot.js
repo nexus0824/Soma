@@ -9,6 +9,7 @@ export default class Loot extends Phaser.Physics.Arcade.Sprite {
     const tex = Loot.textureFor(scene, payload);
     super(scene, x, y, tex.key, tex.frame);
     scene.add.existing(this);
+    this.id = scene.registerEntity(this);
     this.payload = payload;
     this.setScale(payload.kind === 'gold' ? 3 : 2.5);
     scene.physics.add.existing(this);
@@ -47,6 +48,7 @@ export default class Loot extends Phaser.Physics.Arcade.Sprite {
   }
 
   destroy(fromScene) {
+    if (this.scene && this.scene.unregisterEntity) this.scene.unregisterEntity(this);
     if (this.glow) this.glow.destroy();
     super.destroy(fromScene);
   }

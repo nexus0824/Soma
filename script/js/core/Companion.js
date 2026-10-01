@@ -10,6 +10,7 @@ import { t } from '../i18n/I18n.js';
 import { BALANCE, mitigate } from '../data/Balance.js';
 import { initSteering, applySteering } from '../ai/Steering.js';
 import { defaultLook } from '../data/WeaponLooks.js';
+import { GAME_RNG } from './Rng.js';
 import { emptyEquipment } from '../data/Items.js';
 
 export const TACTICS = ['aggressive', 'follow'];
@@ -33,7 +34,7 @@ export default class Companion extends Actor {
     this.downed = false;
     this.reviveAt = 0;
     this.target = null;
-    this.nextThink = scene.combatNow + Math.random() * BALANCE.aiThinkMs;
+    this.nextThink = scene.combatNow + GAME_RNG.random() * BALANCE.aiThinkMs;
     initSteering(this);
   }
 
@@ -174,9 +175,21 @@ export default class Companion extends Actor {
     return true;
   }
 
+  get target() {
+    return this.scene.entityById(this.targetId);
+  }
+
+  set target(v) {
+    this.targetId = v ? v.id : null;
+  }
+
+  netState() {
+    return { ...super.netState(), cls: this.clsId, mp: this.mp, downed: this.downed, tactic: this.tactic, targetId: this.targetId };
+  }
+
   takeDamage(raw, time) {
     if (this.downed || time < this.invulnUntil) return;
-    let amount = Math.max(1, Math.round(mitigate(raw * Phaser.Math.FloatBetween(0.9, 1.1), this.stats.def)));
+    let amount = Math.max(1, Math.round(mitigate(raw * GAME_RNG.floatBetween(0.9, 1.1), this.stats.def)));
     amount = this.absorbWithShield(amount);
     if (amount <= 0) return;
     this.hp -= amount;

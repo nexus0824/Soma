@@ -6,6 +6,7 @@ import Actor from './Actor.js';
 import * as FX from './FX.js';
 import { t } from '../i18n/I18n.js';
 import { BALANCE, mitigate } from '../data/Balance.js';
+import { GAME_RNG } from './Rng.js';
 
 export default class Enemy extends Actor {
   constructor(scene, x, y, typeId, scale) {
@@ -25,7 +26,7 @@ export default class Enemy extends Actor {
     this.mode = 'idle';
     this.aggro = false;
     this.nextAttack = 0;
-    this.nextThink = scene.combatNow + Math.random() * BALANCE.aiThinkMs;
+    this.nextThink = scene.combatNow + GAME_RNG.random() * BALANCE.aiThinkMs;
     this.nextWander = 0;
     this.target = null;
     this.barKey = null;
@@ -51,6 +52,26 @@ export default class Enemy extends Actor {
     this.wander = new Phaser.Math.Vector2();
     initSteering(this);
     this.bar = scene.add.graphics().setDepth(DEPTH.BAR);
+  }
+
+  get target() {
+    return this.scene.entityById(this.targetId);
+  }
+
+  set target(v) {
+    this.targetId = v ? v.id : null;
+  }
+
+  get windupTarget() {
+    return this.scene.entityById(this.windupTargetId);
+  }
+
+  set windupTarget(v) {
+    this.windupTargetId = v ? v.id : null;
+  }
+
+  netState() {
+    return { ...super.netState(), type: this.typeId, mode: this.mode, breakGauge: this.breakGauge, aggro: this.aggro, targetId: this.targetId };
   }
 
   update(time, delta) {
@@ -122,9 +143,9 @@ export default class Enemy extends Actor {
 
   wanderStep(time, speed) {
     if (time >= this.nextWander) {
-      this.nextWander = time + Phaser.Math.Between(900, 1800);
-      if (Math.random() < 0.5) this.wander.set(0, 0);
-      else this.wander.setToPolar(Math.random() * Math.PI * 2, 1);
+      this.nextWander = time + GAME_RNG.between(900, 1800);
+      if (GAME_RNG.chance(0.5)) this.wander.set(0, 0);
+      else this.wander.setToPolar(GAME_RNG.random() * Math.PI * 2, 1);
     }
     this.desired.set(this.wander.x * speed * 0.4, this.wander.y * speed * 0.4);
   }

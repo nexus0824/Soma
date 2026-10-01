@@ -2,6 +2,7 @@ import { actorDepth } from '../Define.js';
 import * as FX from './FX.js';
 import PoseRig from '../anim/PoseRig.js';
 import { WEAPON_ANIMS } from '../data/WeaponAnims.js';
+import { GAME_RNG } from './Rng.js';
 import { t } from '../i18n/I18n.js';
 import { applyHits } from '../combat/HitFeedback.js';
 
@@ -11,6 +12,7 @@ export default class Actor extends Phaser.Physics.Arcade.Sprite {
     scene.add.existing(this);
     this.setScale(cfg.scale);
     scene.physics.add.existing(this);
+    this.id = scene.registerEntity ? scene.registerEntity(this) : null;
     this.spriteKey = cfg.spriteKey;
     this.radius = cfg.bodyRadius * cfg.scale;
     const r = cfg.bodyRadius;
@@ -119,9 +121,9 @@ export default class Actor extends Phaser.Physics.Arcade.Sprite {
 
   rollDamage(mult) {
     let d = this.stats.atk * mult * (1 + this.buffAtk);
-    const crit = Math.random() < this.stats.crit;
+    const crit = GAME_RNG.chance(this.stats.crit);
     if (crit) d *= 1.6;
-    return { amount: Math.max(1, Math.round(d * Phaser.Math.FloatBetween(0.9, 1.1))), crit };
+    return { amount: Math.max(1, Math.round(d * GAME_RNG.floatBetween(0.9, 1.1))), crit };
   }
 
   onDealt(amount) {
@@ -192,7 +194,18 @@ export default class Actor extends Phaser.Physics.Arcade.Sprite {
     }
   }
 
+  netState() {
+    return {
+      id: this.id,
+      x: Math.round(this.x * 10) / 10,
+      y: Math.round(this.y * 10) / 10,
+      hp: this.hp,
+      facing: Math.round(this.facing * 1000) / 1000,
+    };
+  }
+
   destroy(fromScene) {
+    if (this.scene && this.scene.unregisterEntity) this.scene.unregisterEntity(this);
     if (this.shadow) this.shadow.destroy();
     if (this.weaponRig) this.weaponRig.destroy();
     super.destroy(fromScene);

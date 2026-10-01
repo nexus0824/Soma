@@ -1,6 +1,7 @@
 import { RARITY } from '../Define.js';
 import { t, raw } from '../i18n/I18n.js';
 import { rollLook } from './WeaponLooks.js';
+import { GAME_RNG } from '../core/Rng.js';
 
 const PCT_STATS = new Set(['atkMul', 'crit', 'lifesteal', 'cdr']);
 
@@ -94,12 +95,12 @@ function roundStat(stat, value) {
   return Math.round(value);
 }
 
-function rollValue(def, floor) {
+function rollValue(def, floor, rng = GAME_RNG) {
   const bonus = def.perFloor * (floor - 1);
-  return def.min + bonus + Math.random() * (def.max - def.min);
+  return def.min + bonus + rng.random() * (def.max - def.min);
 }
 
-export function rollRarity(floor, minRarity, bonus = 0) {
+export function rollRarity(floor, minRarity, bonus = 0, rng = GAME_RNG) {
   const order = ['common', 'magic', 'rare', 'unique'];
   const minIdx = minRarity ? order.indexOf(minRarity) : 0;
   const table = order.slice(minIdx).map((id) => ({
@@ -107,7 +108,7 @@ export function rollRarity(floor, minRarity, bonus = 0) {
     w: RARITY[id].weight + (id === 'unique' ? floor * 0.4 + bonus * 0.5 : id === 'rare' ? floor * 0.8 + bonus : id === 'magic' ? bonus : 0),
   }));
   const total = table.reduce((s, tbl) => s + tbl.w, 0);
-  let roll = Math.random() * total;
+  let roll = rng.random() * total;
   for (const tbl of table) {
     roll -= tbl.w;
     if (roll <= 0) return tbl.id;
@@ -115,10 +116,10 @@ export function rollRarity(floor, minRarity, bonus = 0) {
   return table[table.length - 1].id;
 }
 
-function pickSlot(bias) {
-  if (bias && bias.slot && SLOTS[bias.slot] && Math.random() < bias.weight) return bias.slot;
+function pickSlot(bias, rng = GAME_RNG) {
+  if (bias && bias.slot && SLOTS[bias.slot] && rng.chance(bias.weight)) return bias.slot;
   const total = SLOT_IDS.reduce((s, id) => s + SLOTS[id].weight, 0);
-  let roll = Math.random() * total;
+  let roll = rng.random() * total;
   for (const id of SLOT_IDS) {
     roll -= SLOTS[id].weight;
     if (roll <= 0) return id;
@@ -127,23 +128,24 @@ function pickSlot(bias) {
 }
 
 export function createItem(floor, clsId, slot, rarityId, opts = {}) {
-  const slotId = slot || pickSlot(opts.slotBias);
-  const rarity = rarityId || rollRarity(floor, opts.minRarity, opts.rarityBonus || 0);
+  const rng = opts.rng || GAME_RNG;
+  const slotId = slot || pickSlot(opts.slotBias, rng);
+  const rarity = rarityId || rollRarity(floor, opts.minRarity, opts.rarityBonus || 0, rng);
   const slotDef = SLOTS[slotId];
   const tier = Math.min(2, Math.floor((floor - 1) / 5));
-  const base = { stat: slotDef.stat, value: roundStat(slotDef.stat, rollValue(slotDef, floor) * (rarity === 'unique' ? 1.4 : 1)) };
+  const base = { stat: slotDef.stat, value: roundStat(slotDef.stat, rollValue(slotDef, floor, rng) * (rarity === 'unique' ? 1.4 : 1)) };
   const pool = AFFIXES.filter((a) => a.stat !== slotDef.stat);
   const affixes = [];
   for (let i = 0; i < RARITY[rarity].affixes && pool.length; i++) {
-    const idx = Math.floor(Math.random() * pool.length);
+    const idx = Math.floor(rng.random() * pool.length);
     const def = pool.splice(idx, 1)[0];
-    affixes.push({ stat: def.stat, value: roundStat(def.stat, rollValue(def, floor)) });
+    affixes.push({ stat: def.stat, value: roundStat(def.stat, rollValue(def, floor, rng)) });
   }
   const item = {
     uid: `${Date.now().toString(36)}${(uidSeq++).toString(36)}`,
     slot: slotId, cls: clsId, rarity, base, affixes, floor, tier,
   };
-  if (slotId === 'weapon') item.look = rollLook(clsId, tier).id;
+  if (slotId === 'weapon') item.look = rollLook(clsId, tier, rng).id;
   item.score = itemScore(item);
   return item;
 }

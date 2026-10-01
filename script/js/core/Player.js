@@ -8,6 +8,7 @@ import { t } from '../i18n/I18n.js';
 import { BALANCE, mitigate } from '../data/Balance.js';
 import { InputState } from './InputState.js';
 import { weaponLookFor } from '../data/WeaponLooks.js';
+import { GAME_RNG } from './Rng.js';
 
 export default class Player extends Actor {
   constructor(scene, x, y, character) {
@@ -147,9 +148,13 @@ export default class Player extends Actor {
     scene.events.emit('skill-used', i);
   }
 
+  netState() {
+    return { ...super.netState(), cls: this.clsId, mp: this.mp, dead: this.dead };
+  }
+
   takeDamage(raw, time) {
     if (this.dead || time < this.invulnUntil) return;
-    let amount = Math.max(1, Math.round(mitigate(raw * Phaser.Math.FloatBetween(0.9, 1.1), this.stats.def)));
+    let amount = Math.max(1, Math.round(mitigate(raw * GAME_RNG.floatBetween(0.9, 1.1), this.stats.def)));
     amount = this.absorbWithShield(amount);
     if (amount <= 0) return;
     this.hp -= amount;
