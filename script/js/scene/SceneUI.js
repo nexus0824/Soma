@@ -1,8 +1,10 @@
 import { GAME_WIDTH, GAME_HEIGHT, FONT, RARITY, MAX_INVENTORY, xpToNext } from '../Define.js';
 import { LAYOUT } from '../ui/Layout.js';
+import Minimap from '../ui/Minimap.js';
 import { InputState } from '../core/InputState.js';
 import { SKILLS } from '../data/Skills.js';
 import { EQUIP_SLOTS, equipSlotsFor, equipSlotLabel, compareTarget, isUpgrade, slotIcon, itemSummary, sellPrice, itemName } from '../data/Items.js';
+import { mitigate, defenseKFor } from '../data/Balance.js';
 import { weaponLookFor } from '../data/WeaponLooks.js';
 import { t } from '../i18n/I18n.js';
 import { cssColor } from '../core/FX.js';
@@ -70,6 +72,7 @@ export default class SceneUI extends Phaser.Scene {
     this.bossText = this.add.text(GAME_WIDTH / 2, L.boss.y - 12, '', TXT(12, '#ff8ab0', { fontStyle: 'bold' })).setOrigin(0.5).setVisible(false);
     this.modText = this.add.text(L.mods.x, L.mods.y, '', TXT(10, '#ffb04a'));
     this.logText = this.add.text(L.log.x, L.log.y, '', TXT(14, '#ffffff', { fontStyle: 'bold', wordWrap: { width: GAME_WIDTH - 40 }, align: 'center' })).setOrigin(0.5).setAlpha(0);
+    this.minimap = new Minimap(this, this.gs);
   }
 
   buildParty() {
@@ -124,8 +127,9 @@ export default class SceneUI extends Phaser.Scene {
   buildButtons() {
     const L = LAYOUT;
     this.attackBtn = this.add.image(L.attack.x, L.attack.y, 'btn_big').setTint(0xff6b5c).setAlpha(0.85).setInteractive();
-    this.add.text(L.attack.x, L.attack.y - 6, t('hud.attack'), TXT(20, '#ffffff', { fontStyle: 'bold' })).setOrigin(0.5);
-    this.add.text(L.attack.x, L.attack.y + 17, t('hud.attackHint'), TXT(10, '#ffd9d4')).setOrigin(0.5);
+    this.attackLabel = this.add.text(L.attack.x, L.attack.y - 6, t('hud.attack'), TXT(20, '#ffffff', { fontStyle: 'bold' })).setOrigin(0.5);
+    this.attackHint = this.add.text(L.attack.x, L.attack.y + 17, t('hud.attackHint'), TXT(10, '#ffd9d4')).setOrigin(0.5);
+    this.interactKey = null;
     this.attackBtn.on('pointerdown', () => {
       InputState.attack = true;
       InputState.attackPressed = true;
@@ -291,6 +295,14 @@ export default class SceneUI extends Phaser.Scene {
       this.dodgeCd.fillPath();
     }
     this.onParty(d.party || []);
+    this.minimap.update();
+    const key = d.interact || null;
+    if (key !== this.interactKey) {
+      this.interactKey = key;
+      this.attackLabel.setText(t(key || 'hud.attack'));
+      this.attackHint.setText(t(key ? `${key}Hint` : 'hud.attackHint'));
+      this.attackBtn.setTint(key ? 0xffd23f : 0xff6b5c);
+    }
   }
 
   updateSkillButton(i, s) {
@@ -504,6 +516,16 @@ export default class SceneUI extends Phaser.Scene {
     });
     const bagX = this.gridLeft(I.bag.cols, I.bag.x);
     this.addText(c, bagX - I.cell / 2, I.bag.y - 26, t('panel.bagTitle', { n: p.inventory.length, max: MAX_INVENTORY }), 16, '#ffffff', { fontStyle: 'bold' });
+    const junk = p.inventory.filter((it) => !isUpgrade(p.equipment, it));
+    if (junk.length) {
+      this.makeButton(c, LAYOUT.panel.x + LAYOUT.panel.w - 92, I.bag.y - 16, 150, 26, t('panel.sellJunk', { n: junk.length }), () => {
+        let gold = 0;
+        for (const it of junk) gold += p.sell(it);
+        this.invSelection = null;
+        this.log(t('panel.sellJunkLog', { n: junk.length, gold }), '#ffd23f');
+        this.refreshPanel();
+      }, 0x6b4a2b, 11);
+    }
     for (let i = 0; i < MAX_INVENTORY; i++) {
       const col = i % I.bag.cols;
       const row = Math.floor(i / I.bag.cols);
@@ -521,6 +543,32 @@ export default class SceneUI extends Phaser.Scene {
       });
     }
     this.buildItemDetail(c, p, sel);
+  }
+
+  mitigationPct(def) {
+    const p = this.subject();
+    const level = this.mode === 'game' ? this.gs.level : Math.max(1, p.level);
+    return Math.round(100 * (1 - mitigate(1, def, defenseKFor(level))));
+  }
+
+  previewText(p, item) {
+    const a = p.stats;
+    const b = p.previewStats(item);
+    const pct = a.atk > 0 ? Math.round(((b.atk - a.atk) / a.atk) * 100) : 0;
+    return t('panel.previewLine', { atk0: a.atk, atk1: b.atk, pct: `${pct >= 0 ? '+' : ''}${pct}`, mit0: this.mitigationPct(a.def), mit1: this.mitigationPct(b.def), hp0: a.maxHp, hp1: b.maxHp });
+  }
+
+  deltaText(a, b) {
+    const parts = [];
+    const sign = (v) => (v > 0 ? `+${v}` : `${v}`);
+    if (b.atk !== a.atk) parts.push(`${t('stat.atk')} ${sign(b.atk - a.atk)}`);
+    const m0 = this.mitigationPct(a.def);
+    const m1 = this.mitigationPct(b.def);
+    if (m1 !== m0) parts.push(`${t('panel.mitigation')} ${sign(m1 - m0)}%`);
+    if (b.maxHp !== a.maxHp) parts.push(`HP ${sign(b.maxHp - a.maxHp)}`);
+    if (Math.round(b.crit * 100) !== Math.round(a.crit * 100)) parts.push(`${t('stat.crit')} ${sign(Math.round((b.crit - a.crit) * 100))}%`);
+    if (b.speed !== a.speed) parts.push(`${t('stat.speed')} ${sign(b.speed - a.speed)}`);
+    return parts.join(' · ');
   }
 
   buildItemDetail(c, p, sel) {
@@ -543,8 +591,10 @@ export default class SceneUI extends Phaser.Scene {
     this.addText(c, x + 12, y, t('panel.detailMeta', { slot: slotLabel, floor: item.floor, score: item.score }), 11, '#9aa4b8');
     y += 20;
     this.addText(c, x + 12, y, itemSummary(item), 12, '#c9d1e0', { wordWrap: { width: w - 24 } });
-    y += 40;
+    y += 24;
     if (sel.kind === 'bag') {
+      this.addText(c, x + 12, y, this.previewText(p, item), 11, '#ffffff', { wordWrap: { width: w - 24 } });
+      y += 20;
       const cur = compareTarget(p.equipment, item);
       if (!cur) this.addText(c, x + 12, y, t('panel.compareEmpty'), 11, '#7dff9a');
       else if (item.score > cur.score) this.addText(c, x + 12, y, t('panel.compareBetter', { name: itemName(cur), score: cur.score }), 11, '#7dff9a', { wordWrap: { width: w - 24 } });
@@ -556,9 +606,10 @@ export default class SceneUI extends Phaser.Scene {
         const label = slots.length > 1 ? t('panel.equipInto', { slot: equipSlotLabel(slot.id) }) : t('panel.equip');
         this.makeButton(c, bx, by, btnW, 30, label, () => {
           const name = itemName(item);
+          const delta = this.deltaText(p.stats, p.previewStats(item, slot.id));
           p.equip(item, slot.id);
           this.invSelection = { kind: 'equip', slotId: slot.id };
-          this.log(t('panel.equipLog', { name }), RARITY[item.rarity].css);
+          this.log(delta ? t('panel.equipLogDelta', { name, delta }) : t('panel.equipLog', { name }), RARITY[item.rarity].css);
           this.refreshPanel();
         }, 0x2f6fd6, 12);
         bx += btnW + 10;
