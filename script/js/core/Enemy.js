@@ -7,22 +7,29 @@ import * as FX from './FX.js';
 import { t } from '../i18n/I18n.js';
 import { BALANCE, mitigate } from '../data/Balance.js';
 import { GAME_RNG } from './Rng.js';
+import { ELITE } from '../data/Rooms.js';
 
 export default class Enemy extends Actor {
   constructor(scene, x, y, typeId, scale) {
     const def = ENEMIES[typeId];
-    super(scene, x, y, { spriteKey: def.sprite, scale: def.scale, bodyRadius: def.bodyRadius });
+    const elite = !!scale.elite;
+    super(scene, x, y, { spriteKey: def.sprite, scale: def.scale * (elite ? ELITE.scale : 1), bodyRadius: def.bodyRadius });
     this.def = def;
     this.typeId = typeId;
+    this.elite = elite;
     this.level = scale.level;
-    this.maxHp = Math.max(1, Math.round(def.hp * scale.hp));
+    this.maxHp = Math.max(1, Math.round(def.hp * scale.hp * (elite ? ELITE.hp : 1)));
     this.hp = this.maxHp;
-    this.atk = Math.max(1, Math.round(def.atk * scale.atk));
+    this.baseAtk = Math.max(1, Math.round(def.atk * scale.atk * (elite ? ELITE.atk : 1)));
+    this.atk = this.baseAtk;
+    this.aggroAt = null;
+    this.enrageMul = 0;
+    this.enrageGlow = null;
     this.defense = Math.round(def.def + (scale.level - 1) * 0.5);
-    this.xp = Math.max(1, Math.round(def.xp * scale.xp));
-    this.goldValue = def.gold * scale.gold;
+    this.xp = Math.max(1, Math.round(def.xp * scale.xp * (elite ? ELITE.xp : 1)));
+    this.goldValue = def.gold * scale.gold * (elite ? ELITE.gold : 1);
     this.speed = def.speed * scale.speed;
-    this.breakMax = def.breakMax * scale.breakMax;
+    this.breakMax = def.breakMax * scale.breakMax * (elite ? ELITE.breakMax : 1);
     this.mode = 'idle';
     this.aggro = false;
     this.nextAttack = 0;
@@ -74,10 +81,33 @@ export default class Enemy extends Actor {
     return { ...super.netState(), type: this.typeId, mode: this.mode, breakGauge: this.breakGauge, aggro: this.aggro, targetId: this.targetId };
   }
 
+  updateEnrage(time) {
+    if (!this.def.boss) return;
+    if (this.aggro && this.aggroAt === null) this.aggroAt = time;
+    if (this.aggroAt === null) return;
+    const cfg = this.scene.bossEnrageParams();
+    const elapsed = time - this.aggroAt - cfg.after;
+    if (elapsed < 0) return;
+    const mul = Math.min(cfg.max, (Math.floor(elapsed / cfg.step) + 1) * cfg.perStep);
+    if (mul === this.enrageMul) return;
+    const first = this.enrageMul === 0;
+    this.enrageMul = mul;
+    this.atk = Math.max(1, Math.round(this.baseAtk * (1 + mul)));
+    if (first) {
+      this.enrageGlow = this.scene.add.image(this.x, this.y + 10, 'glow').setDepth(DEPTH.SHADOW + 1).setTint(0xff3030).setScale(2.2).setAlpha(0.45);
+      this.scene.fxTweens.add({ targets: this.enrageGlow, alpha: 0.8, duration: 500, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      this.scene.events.emit('log', t('game.bossEnrage', { name: t(`enemy.${this.typeId}`) }), '#ff5c5c');
+      this.scene.cameras.main.shake(250, 0.008);
+    }
+    FX.floatText(this.scene, this.x, this.y - this.displayHeight / 2 - 30, t('hud.enraged', { pct: Math.round(mul * 100) }), '#ff5c5c', 14);
+  }
+
   update(time, delta) {
     if (!this.active) return;
     const player = this.scene.player;
     this.syncVisuals();
+    this.updateEnrage(time);
+    if (this.enrageGlow) this.enrageGlow.setPosition(this.x, this.y + 10);
     this.updateBar();
     if (this.dotUntil > time && time >= this.nextDot) {
       this.nextDot = time + 500;
@@ -338,7 +368,8 @@ export default class Enemy extends Actor {
     this.hp -= amount;
     if (!opts.silent) {
       const color = guarded ? '#9aa4b8' : dmg.crit ? '#ffd23f' : broken ? '#ff8a5c' : '#ffffff';
-      FX.floatText(this.scene, this.x, this.y - this.displayHeight / 2 - 4, amount, color, dmg.crit ? 20 : 15);
+      const size = 12 + Math.min(10, Math.round((amount / this.maxHp) * 30)) + (dmg.crit ? 5 : 0);
+      FX.floatText(this.scene, this.x, this.y - this.displayHeight / 2 - 4, amount, color, size);
       if (guarded) FX.floatText(this.scene, this.x, this.y - this.displayHeight / 2 - 22, t('game.guard'), '#9aa4b8', 11);
       this.hitReact(now, 120);
       const stagger = BALANCE.hitStaggerMs * (1 - (this.def.knockbackResist || 0));
@@ -389,11 +420,15 @@ export default class Enemy extends Actor {
     if (key === this.barKey) return;
     this.barKey = key;
     g.clear();
-    if (this.hp >= this.maxHp && this.breakGauge === 0 && !broken) return;
+    if (this.hp >= this.maxHp && this.breakGauge === 0 && !broken && !this.elite) return;
     const w = Math.max(30, this.displayWidth * 0.9);
     const x = -w / 2;
     g.fillStyle(0x000000, 0.7);
     g.fillRect(x - 1, -1, w + 2, 6);
+    if (this.elite) {
+      g.lineStyle(1, 0xffd23f, 1);
+      g.strokeRect(x - 2, -2, w + 4, 10);
+    }
     g.fillStyle(0xff4a4a, 1);
     g.fillRect(x, 0, w * Math.max(0, this.hp / this.maxHp), 4);
     const breakRatio = broken ? 1 : this.breakGauge / this.breakMax;
@@ -403,6 +438,7 @@ export default class Enemy extends Actor {
 
   destroy(fromScene) {
     if (this.bar) this.bar.destroy();
+    if (this.enrageGlow) this.enrageGlow.destroy();
     super.destroy(fromScene);
   }
 }
