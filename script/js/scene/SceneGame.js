@@ -1,6 +1,5 @@
 import { TILE, MAP_COLS, MAP_ROWS, DEPTH } from '../Define.js';
-import { ENEMIES, pickWeighted, dropMulFor } from '../data/Enemies.js';
-import { createItem, rollRarity, itemName } from '../data/Items.js';
+import { ENEMIES, pickWeighted } from '../data/Enemies.js';
 import { t } from '../i18n/I18n.js';
 import { CLASSES } from '../data/Classes.js';
 import { DUNGEONS, spawnTableFor, difficultyLevel, isBossFloor } from '../data/Dungeons.js';
@@ -10,7 +9,6 @@ import Player from '../core/Player.js';
 import Companion, { TACTICS } from '../core/Companion.js';
 import Enemy from '../core/Enemy.js';
 import Projectile from '../core/Projectile.js';
-import Loot from '../core/Loot.js';
 import { getRoomType } from '../core/RoomTypes.js';
 import { generateDungeon, buildTileIndices, roomRandomTile, tileToWorld } from '../core/Dungeon.js';
 import Navigation from '../ai/Navigation.js';
@@ -18,10 +16,12 @@ import { InputState } from '../core/InputState.js';
 import * as FX from '../core/FX.js';
 import { applyHits } from '../combat/HitFeedback.js';
 import HazardManager from '../combat/Hazards.js';
-import SaveManager from '../manager/SaveManager.js';
-import { MAX_INVENTORY } from '../Define.js';
 import { GAME_RNG, floorRng } from '../core/Rng.js';
-import { ELITE, CHEST, MIMIC } from '../data/Rooms.js';
+import EntityRegistry from './game/EntityRegistry.js';
+import InputCollector from './game/InputCollector.js';
+import { buildHud } from './game/HudBuilder.js';
+import RunFlow from './game/RunFlow.js';
+import RewardSystem from './game/RewardSystem.js';
 
 export default class SceneGame extends Phaser.Scene {
   constructor() {
@@ -47,10 +47,11 @@ export default class SceneGame extends Phaser.Scene {
     this.combatNow = 0;
     this.fxTweens = new Phaser.Tweens.TweenManager(this);
     this.hazards = new HazardManager(this);
-    this.entities = new Map();
-    this.entitySeq = 1;
+    this.registry_ = new EntityRegistry();
     this.explored = new Uint8Array(MAP_COLS * MAP_ROWS);
-    this.killsSinceDrop = 0;
+    this.rewards = new RewardSystem(this);
+    this.flow = new RunFlow(this);
+    this.inputs = new InputCollector(this);
     this.fxTweens.start();
     this.isBossFloor = isBossFloor(this.dungeonDef, this.floor, this.run.floors);
     this.character.setBest(this.run.dungeonId, this.floor);
@@ -97,12 +98,7 @@ export default class SceneGame extends Phaser.Scene {
     cam.setRoundPixels(true);
     cam.fadeIn(400, 0, 0, 0);
 
-    this.keys = this.input.keyboard.addKeys({
-      up: 'W', down: 'S', left: 'A', right: 'D',
-      up2: 'UP', down2: 'DOWN', left2: 'LEFT', right2: 'RIGHT',
-      attack: 'J', dodge: 'SPACE', s1: 'K', s2: 'L', s3: 'SEMICOLON', interact: 'E',
-    });
-    this.input.mouse.disableContextMenu();
+    this.inputs.bind();
     this.events.off('resume', this.onResume, this);
     this.events.on('resume', this.onResume, this);
     this.events.off('shutdown', this.onShutdown, this);
@@ -128,29 +124,32 @@ export default class SceneGame extends Phaser.Scene {
   }
 
   onResume() {
-    this.input.keyboard.resetKeys();
-    InputState.reset();
+    this.inputs.reset();
+  }
+
+  get entities() {
+    return this.registry_.map;
+  }
+
+  get keys() {
+    return this.inputs.keys;
   }
 
   registerEntity(obj) {
-    const id = this.entitySeq++;
-    this.entities.set(id, obj);
-    return id;
+    return this.registry_.register(obj);
   }
 
   unregisterEntity(obj) {
-    if (obj.id !== undefined && obj.id !== null) this.entities.delete(obj.id);
+    this.registry_.unregister(obj);
   }
 
   entityById(id) {
-    if (id === undefined || id === null) return null;
-    const obj = this.entities.get(id);
-    return obj && obj.active ? obj : null;
+    return this.registry_.byId(id);
   }
 
   onShutdown() {
     this.clearHitStop();
-    if (this.entities) this.entities.clear();
+    if (this.registry_) this.registry_.clear();
     if (this.hazards) this.hazards.clear();
     if (this.fxTweens) {
       this.fxTweens.destroy();
@@ -281,18 +280,11 @@ export default class SceneGame extends Phaser.Scene {
   }
 
   dropChestRewards(x, y, bonus = {}) {
-    const c = this.character;
-    const gold = Math.round((CHEST.goldBase + CHEST.goldPerLevel * this.level) * (bonus.goldMul || 1) * GAME_RNG.floatBetween(0.8, 1.3));
-    this.dropLoot(x, y, { kind: 'gold', amount: gold });
-    const opts = this.itemOpts();
-    const rarityBonus = opts.rarityBonus + CHEST.itemRarityBonus + (bonus.rarityBonus || 0);
-    this.dropLoot(x, y, { kind: 'item', item: createItem(this.level, c.clsId, undefined, rollRarity(this.level, 'magic', rarityBonus), opts) });
-    if (GAME_RNG.chance(CHEST.secondItemChance)) this.dropLoot(x, y, { kind: 'item', item: createItem(this.level, c.clsId, undefined, rollRarity(this.level, CHEST.secondItemMinRarity, opts.rarityBonus + (bonus.rarityBonus || 0)), opts) });
+    this.rewards.dropChestRewards(x, y, bonus);
   }
 
   openChest(chest) {
-    this.dropChestRewards(chest.x, chest.y + TILE);
-    this.events.emit('log', t('game.chestOpen'), '#ffd23f');
+    this.rewards.openChest(chest);
   }
 
   spawnMimic(chest) {
@@ -560,132 +552,43 @@ export default class SceneGame extends Phaser.Scene {
   }
 
   itemOpts() {
-    return { rarityBonus: this.dungeonDef.rarityBonus || 0, slotBias: this.dungeonDef.dropBias };
+    return this.rewards.itemOpts();
   }
 
   onEnemyKilled(e) {
-    this.player.gainXp(e.xp);
-    const D = BALANCE.drops;
-    if (e.def.boss || GAME_RNG.chance(D.goldChance)) {
-      this.dropLoot(e.x, e.y, { kind: 'gold', amount: Math.max(1, Math.round(e.goldValue * D.goldMul * GAME_RNG.floatBetween(0.7, 1.4))) });
-    }
-    const opts = this.itemOpts();
-    if (e.def.boss) {
-      this.dropLoot(e.x, e.y, { kind: 'item', item: createItem(this.level, this.player.clsId, undefined, rollRarity(this.level, 'rare', opts.rarityBonus), opts) });
-      this.dropLoot(e.x, e.y, { kind: 'item', item: createItem(this.level, this.player.clsId, undefined, rollRarity(this.level, 'magic', opts.rarityBonus), opts) });
-      this.boss = null;
-      this.events.emit('log', t('game.bossDown', { name: t(`enemy.${e.typeId}`) }), '#ff8ab0');
-      this.cameras.main.shake(300, 0.01);
-    } else if (e.def.mimic) {
-      this.dropChestRewards(e.x, e.y, { goldMul: MIMIC.goldMul, rarityBonus: MIMIC.rarityBonus });
-      this.events.emit('log', t('game.mimicDown'), '#ffd23f');
-    } else if (e.elite) {
-      if (e.room && this.remainingInRoom(e.room) <= 1) {
-        this.dropLoot(e.x, e.y, { kind: 'item', item: createItem(this.level, this.player.clsId, undefined, rollRarity(this.level, 'magic', opts.rarityBonus + ELITE.dropRarityBonus), opts) });
-        if (GAME_RNG.chance(D.elitePackBonusChance)) this.dropLoot(e.x, e.y, { kind: 'item', item: createItem(this.level, this.player.clsId, undefined, rollRarity(this.level, 'magic', opts.rarityBonus), opts) });
-      }
-    } else {
-      this.killsSinceDrop++;
-      const forced = this.killsSinceDrop >= D.pityKills;
-      if (forced || GAME_RNG.chance(D.itemChance * this.mods.dropChanceMul * dropMulFor(e.typeId))) {
-        this.killsSinceDrop = 0;
-        const minRarity = this.floor > D.commonUntilFloor ? 'magic' : undefined;
-        this.dropLoot(e.x, e.y, { kind: 'item', item: createItem(this.level, this.player.clsId, undefined, rollRarity(this.level, minRarity, opts.rarityBonus), opts) });
-      }
-    }
-    if (this.remaining() - 1 <= 0) this.openPortal();
+    this.rewards.onEnemyKilled(e);
   }
 
   dropLoot(x, y, payload) {
-    const ox = x + GAME_RNG.between(-28, 28);
-    const oy = y + GAME_RNG.between(-20, 20);
-    const onFloor = this.isFloorAt(ox, oy);
-    const loot = new Loot(this, onFloor ? ox : x, onFloor ? oy : y, payload);
-    this.loots.add(loot);
+    this.rewards.dropLoot(x, y, payload);
   }
 
   openPortal() {
-    if (this.portalOpen) return;
-    this.portalOpen = true;
-    this.portal.clearTint();
-    this.portalGlow.setVisible(true);
-    this.tweens.add({ targets: this.portalGlow, alpha: 0.3, scale: 2.0, duration: 800, yoyo: true, repeat: -1 });
-    const last = !this.dungeonDef.endless && this.floor >= this.run.floors;
-    this.events.emit('log', t(last ? 'game.stairsOpenLast' : 'game.stairsOpen'), '#8be3ff');
-    this.save();
+    this.flow.openPortal();
   }
 
   tryExit() {
-    if (!this.portalOpen || this.transitioning || this.player.dead) return;
-    if (!this.dungeonDef.endless && this.floor >= this.run.floors) this.finishRun();
-    else this.nextFloor();
+    this.flow.tryExit();
   }
 
   nextFloor() {
-    this.transitioning = true;
-    this.player.setVelocity(0, 0);
-    this.run.floor = this.floor + 1;
-    this.character.setBest(this.run.dungeonId, this.run.floor);
-    this.save();
-    this.cameras.main.fadeOut(350, 0, 0, 0);
-    this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
-      this.scene.restart({ character: this.character });
-    });
+    this.flow.nextFloor();
   }
 
   finishRun() {
-    this.transitioning = true;
-    this.player.setVelocity(0, 0);
-    const c = this.character;
-    const def = this.dungeonDef;
-    let summary;
-    if (this.run.daily) {
-      c.progress.dailyDone = this.run.dateKey;
-      const opts = this.itemOpts();
-      const reward = createItem(this.level + 2, c.clsId, undefined, rollRarity(this.level, 'rare', opts.rarityBonus + 10), opts);
-      if (c.inventory.length < MAX_INVENTORY) c.inventory.push(reward);
-      else c.gold += 200;
-      summary = t('game.dailyDone', { reward: c.inventory.includes(reward) ? itemName(reward) : t('game.dailyDoneGold', { gold: 200 }) });
-    } else {
-      const first = !c.isCleared(def.id);
-      c.markCleared(def.id);
-      summary = t(first ? 'game.firstClear' : 'game.clear', { dungeon: t(`dungeon.${def.id}.name`) });
-    }
-    c.run = null;
-    this.save();
-    this.events.emit('log', summary, '#ffd23f');
-    this.cameras.main.fadeOut(600, 0, 0, 0);
-    this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
-      this.scene.stop('SceneUI');
-      this.scene.start('SceneHub', { character: c, summary });
-    });
+    this.flow.finishRun();
   }
 
   onPlayerDead() {
-    const c = this.character;
-    c.gold = Math.floor(c.gold * 0.8);
-    const canRetry = !this.dungeonDef.endless && !this.run.daily;
-    const info = { dungeonId: this.run.dungeonId, floor: this.floor, canRetry };
-    if (!canRetry) c.run = null;
-    this.save();
-    this.events.emit('log', t('game.died'), '#ff6b6b');
-    this.time.delayedCall(900, () => {
-      this.cameras.main.fadeOut(400, 0, 0, 0);
-      this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
-        this.scene.stop('SceneUI');
-        this.scene.start('SceneResult', { character: c, info });
-      });
-    });
+    this.flow.onPlayerDead();
   }
 
   save() {
-    SaveManager.save(this.character.serialize());
+    this.flow.save();
   }
 
   returnToHub() {
-    this.save();
-    this.scene.stop('SceneUI');
-    this.scene.start('SceneHub', { character: this.character });
+    this.flow.returnToHub();
   }
 
   update(time, delta) {
@@ -700,49 +603,15 @@ export default class SceneGame extends Phaser.Scene {
     const time = this.combatNow;
     this.interactTarget = this.findInteractable();
     if (!this.player.dead) {
-      const k = this.keys;
-      let mx = (k.right.isDown || k.right2.isDown ? 1 : 0) - (k.left.isDown || k.left2.isDown ? 1 : 0);
-      let my = (k.down.isDown || k.down2.isDown ? 1 : 0) - (k.up.isDown || k.up2.isDown ? 1 : 0);
-      if (mx === 0 && my === 0) {
-        mx = InputState.moveX;
-        my = InputState.moveY;
-      }
-      const JustDown = Phaser.Input.Keyboard.JustDown;
-      let attackPressed = JustDown(k.attack) || InputState.attackPressed;
-      let attackHeld = k.attack.isDown || InputState.attack;
-      if (this.interactTarget) {
-        if (attackPressed || JustDown(k.interact)) this.interactTarget.interact();
-        attackPressed = false;
-        attackHeld = false;
-      }
-      const actions = {
-        attack: attackHeld,
-        attackPressed,
-        dodge: JustDown(k.dodge) || InputState.dodgePressed,
-        dodgeTarget: InputState.dodgeTarget,
-        skills: [
-          JustDown(k.s1) || InputState.skills[0],
-          JustDown(k.s2) || InputState.skills[1],
-          JustDown(k.s3) || InputState.skills[2],
-        ],
-      };
-      InputState.skills = [false, false, false];
-      InputState.attackPressed = false;
-      InputState.dodgePressed = false;
-      InputState.dodgeTarget = null;
-      this.player.update(time, delta, { x: mx, y: my }, actions);
+      const input = this.inputs.collect(this.interactTarget);
+      if (input.interact) this.interactTarget.interact();
+      this.player.update(time, delta, input.move, input.actions);
     }
     this.aimMarker.setVisible(InputState.aim.active).setPosition(InputState.aim.x, InputState.aim.y);
     for (const c of this.companions.getChildren()) c.update(time, delta);
     for (const e of [...this.enemies.getChildren()]) e.update(time, delta);
     this.hazards.update(time);
     for (const it of [...this.interactables]) if (it.active && it.update) it.update(time);
-    const hud = this.player.hudData(time, this.remaining(), this.boss);
-    hud.party = this.companions.getChildren().map((c) => c.hudData(time));
-    hud.floorLabel = this.floorLabel();
-    hud.modNames = this.modNames();
-    hud.interact = this.interactTarget ? this.interactTarget.promptKey : null;
-    if (hud.boss && this.boss && this.boss.enrageMul > 0) hud.boss.name = `${hud.boss.name} ${t('hud.enraged', { pct: Math.round(this.boss.enrageMul * 100) })}`;
-    this.events.emit('hud', hud);
+    this.events.emit('hud', buildHud(this, time));
   }
 }
