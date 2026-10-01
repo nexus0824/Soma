@@ -42,6 +42,11 @@ export default class Enemy extends Actor {
     this.retreatUntil = 0;
     this.nextRetreat = 0;
     this.retreatDir = new Phaser.Math.Vector2();
+    this.castUntil = 0;
+    this.castFn = null;
+    this.castTelegraph = null;
+    this.charge = null;
+    this.suicide = false;
     this.abilityState = [];
     this.wander = new Phaser.Math.Vector2();
     initSteering(this);
@@ -59,7 +64,13 @@ export default class Enemy extends Actor {
       if (!this.active) return;
     }
     if (this.mode === 'windup' && time >= this.windupUntil) this.releaseMelee(time);
-    if (this.breakUntil > time || this.knockUntil > time || this.staggerUntil > time || this.mode === 'windup' || player.dead) {
+    if (this.mode === 'cast' && time >= this.castUntil) this.releaseCast(time);
+    if (!this.active) return;
+    if (this.mode === 'charge') {
+      this.updateCharge(time);
+      return;
+    }
+    if (this.breakUntil > time || this.knockUntil > time || this.staggerUntil > time || this.mode === 'windup' || this.mode === 'cast' || player.dead) {
       if (this.knockUntil <= time) this.setVelocity(0, 0);
       this.play(`${this.spriteKey}_idle`, true);
       return;
@@ -131,14 +142,92 @@ export default class Enemy extends Actor {
     this.desired.set(0, 0);
   }
 
+  isFree() {
+    return this.mode !== 'windup' && this.mode !== 'cast' && this.mode !== 'charge';
+  }
+
   runAbilities(time) {
+    if (!this.isFree()) return;
     const list = this.def.abilities || [];
+    const tgt = this.target;
+    const dist = tgt && tgt.active ? Phaser.Math.Distance.Between(this.x, this.y, tgt.x, tgt.y) : Infinity;
     for (let i = 0; i < list.length; i++) {
       const ab = list[i];
       const st = this.abilityState[i] || (this.abilityState[i] = { next: time + (ab.first || ab.cooldown) });
       if (time < st.next) continue;
+      if (ab.range && dist > ab.range) continue;
+      if (ab.minRange && dist < ab.minRange) continue;
       st.next = time + ab.cooldown;
       runAbility(ab.type, this, ab);
+      if (!this.isFree() || !this.active) return;
+    }
+  }
+
+  beginCast(time, windup, fn, telegraph = null, tint = 0xffd0d0) {
+    this.cancelCast();
+    this.mode = 'cast';
+    this.setVelocity(0, 0);
+    this.desired.set(0, 0);
+    this.castUntil = time + windup;
+    this.castFn = fn;
+    this.castTelegraph = telegraph;
+    this.setTint(tint);
+  }
+
+  releaseCast(time) {
+    const fn = this.castFn;
+    this.castFn = null;
+    this.castTelegraph = null;
+    this.clearTint();
+    this.mode = 'chase';
+    if (fn && this.breakUntil <= time) fn(time);
+  }
+
+  cancelCast() {
+    if (this.castTelegraph) this.castTelegraph.destroy();
+    this.castTelegraph = null;
+    this.castFn = null;
+    this.charge = null;
+    if (this.mode === 'cast' || this.mode === 'charge') this.mode = 'chase';
+  }
+
+  startCharge(time, angle, cfg) {
+    this.mode = 'charge';
+    this.facing = angle;
+    this.charge = { vx: Math.cos(angle) * cfg.speed, vy: Math.sin(angle) * cfg.speed, until: time + cfg.duration, cfg, hit: new Set() };
+    this.setTint(0xffb0b0);
+  }
+
+  updateCharge(time) {
+    const c = this.charge;
+    if (!c) {
+      this.mode = 'chase';
+      return;
+    }
+    this.setVelocity(c.vx, c.vy);
+    this.play(`${this.spriteKey}_run`, true);
+    this.setFlipX(c.vx < 0);
+    for (const p of this.scene.partyMembers()) {
+      if (c.hit.has(p)) continue;
+      if (Phaser.Math.Distance.Between(this.x, this.y, p.x, p.y) > this.radius + p.radius + 6) continue;
+      c.hit.add(p);
+      p.takeDamage(Math.round(this.atk * (c.cfg.damageMul || 1)), time);
+    }
+    const blocked = !this.body.blocked.none;
+    if (time >= c.until || blocked) this.endCharge(time, blocked);
+  }
+
+  endCharge(time, blocked) {
+    const cfg = this.charge ? this.charge.cfg : {};
+    this.charge = null;
+    this.mode = 'chase';
+    this.clearTint();
+    this.setVelocity(0, 0);
+    this.desired.set(0, 0);
+    this.staggerUntil = time + (blocked ? (cfg.wallStun || 700) : (cfg.recovery || 300));
+    if (blocked) {
+      FX.burst(this.scene, this.x, this.y, 0xffffff, 8, 30);
+      this.scene.cameras.main.shake(100, 0.004);
     }
   }
 
@@ -214,11 +303,22 @@ export default class Enemy extends Actor {
     const broken = this.breakUntil > now;
     let amount = Math.max(1, mitigate(dmg.amount, this.defense, BALANCE.enemyDefenseK));
     if (broken) amount *= 1.5;
-    amount = Math.round(amount);
+    const guard = this.def.guard;
+    let guarded = false;
+    if (guard && !broken && knockAngle !== null && knockAngle !== undefined) {
+      const from = Phaser.Math.Angle.Wrap(knockAngle + Math.PI);
+      guarded = Math.abs(Phaser.Math.Angle.Wrap(from - this.facing)) <= Phaser.Math.DegToRad(guard.arc / 2);
+    }
+    if (guarded) {
+      amount *= guard.mul;
+      breakAmt = breakAmt * (guard.breakMul === undefined ? guard.mul : guard.breakMul);
+    }
+    amount = Math.max(1, Math.round(amount));
     this.hp -= amount;
     if (!opts.silent) {
-      const color = dmg.crit ? '#ffd23f' : broken ? '#ff8a5c' : '#ffffff';
+      const color = guarded ? '#9aa4b8' : dmg.crit ? '#ffd23f' : broken ? '#ff8a5c' : '#ffffff';
       FX.floatText(this.scene, this.x, this.y - this.displayHeight / 2 - 4, amount, color, dmg.crit ? 20 : 15);
+      if (guarded) FX.floatText(this.scene, this.x, this.y - this.displayHeight / 2 - 22, t('game.guard'), '#9aa4b8', 11);
       this.hitReact(now, 120);
       const stagger = BALANCE.hitStaggerMs * (1 - (this.def.knockbackResist || 0));
       if (stagger > 0) this.staggerUntil = Math.max(this.staggerUntil, now + stagger);
@@ -230,6 +330,7 @@ export default class Enemy extends Actor {
         brokeNow = true;
         this.breakGauge = 0;
         this.breakUntil = now + (this.def.boss ? 1200 : 1700);
+        this.cancelCast();
         this.mode = 'chase';
         this.clearTint();
         FX.floatText(this.scene, this.x, this.y - this.displayHeight / 2 - 24, t('game.breakText'), '#ff5c8a', 18);
@@ -237,18 +338,21 @@ export default class Enemy extends Actor {
       }
     }
     const resist = this.def.knockbackResist || 0;
-    const knock = (opts.knockback ?? 200) * (1 - resist) * (broken ? 1.3 : 1);
+    const knock = (opts.knockback ?? 200) * (1 - resist) * (broken ? 1.3 : 1) * (guarded ? guard.mul : 1);
     if (knockAngle !== null && knockAngle !== undefined && knock > 0) {
       this.setVelocity(Math.cos(knockAngle) * knock, Math.sin(knockAngle) * knock);
       this.knockUntil = now + 110;
     }
     const killed = this.hp <= 0;
     if (killed) this.die(knockAngle);
-    return { target: this, amount, crit: !!dmg.crit, brokeNow, killed, angle: knockAngle };
+    return { target: this, amount, crit: !!dmg.crit, brokeNow, killed, guarded, angle: knockAngle };
   }
 
   die(angle) {
     if (!this.active) return;
+    this.cancelCast();
+    const blast = this.def.deathBlast;
+    if (blast && !this.suicide) this.scene.hazards.scheduleBlast(this.x, this.y, blast.radius, Math.round(this.atk * (blast.damageMul || 1)), blast.delay, { color: this.def.color, shake: 0.004 });
     FX.burst(this.scene, this.x, this.y, this.def.color, 14, 60);
     FX.corpse(this, angle);
     this.scene.onEnemyKilled(this);

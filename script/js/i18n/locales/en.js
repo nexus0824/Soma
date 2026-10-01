@@ -40,6 +40,9 @@ export default {
     skeleton: 'Skeleton',
     chort: 'Chort',
     guardian: 'Core Guardian',
+    brute: 'Orc Brute',
+    bomber: 'Bomber Zombie',
+    warden: 'Masked Warden',
   },
   rarity: { common: 'Common', magic: 'Magic', rare: 'Rare', unique: 'Unique' },
   stat: {
@@ -130,6 +133,7 @@ export default {
     absorb: 'Absorb {n}',
     breakText: 'BREAK!',
     summon: 'Summon!',
+    guard: 'GUARD',
     lootGet: 'Got {name}',
     lootSold: 'Bag full: {name} auto-sold (+{gold} G)',
     goldGet: '+{n} G',

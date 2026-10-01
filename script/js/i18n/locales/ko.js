@@ -40,6 +40,9 @@ export default {
     skeleton: '스켈레톤',
     chort: '초르트',
     guardian: '코어 가디언',
+    brute: '오크 전사',
+    bomber: '폭탄 좀비',
+    warden: '가면 오크',
   },
   rarity: { common: '일반', magic: '마법', rare: '희귀', unique: '유니크' },
   stat: {
@@ -130,6 +133,7 @@ export default {
     absorb: '흡수 {n}',
     breakText: 'BREAK!',
     summon: '소환!',
+    guard: '방어',
     lootGet: '{name} 획득',
     lootSold: '가방이 가득 차 {name} 자동 판매 (+{gold} G)',
     goldGet: '+{n} G',

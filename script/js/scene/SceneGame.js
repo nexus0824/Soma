@@ -16,6 +16,7 @@ import Navigation from '../ai/Navigation.js';
 import { InputState } from '../core/InputState.js';
 import * as FX from '../core/FX.js';
 import { applyHits } from '../combat/HitFeedback.js';
+import HazardManager from '../combat/Hazards.js';
 import SaveManager from '../manager/SaveManager.js';
 import { MAX_INVENTORY } from '../Define.js';
 
@@ -41,6 +42,7 @@ export default class SceneGame extends Phaser.Scene {
     this.hitStopEnd = 0;
     this.combatNow = 0;
     this.fxTweens = new Phaser.Tweens.TweenManager(this);
+    this.hazards = new HazardManager(this);
     this.fxTweens.start();
     this.isBossFloor = isBossFloor(this.dungeonDef, this.floor, this.run.floors);
     this.character.setBest(this.run.dungeonId, this.floor);
@@ -119,6 +121,7 @@ export default class SceneGame extends Phaser.Scene {
 
   onShutdown() {
     this.clearHitStop();
+    if (this.hazards) this.hazards.clear();
     if (this.fxTweens) {
       this.fxTweens.destroy();
       this.fxTweens = null;
@@ -585,6 +588,7 @@ export default class SceneGame extends Phaser.Scene {
     this.aimMarker.setVisible(InputState.aim.active).setPosition(InputState.aim.x, InputState.aim.y);
     for (const c of this.companions.getChildren()) c.update(time, delta);
     for (const e of [...this.enemies.getChildren()]) e.update(time, delta);
+    this.hazards.update(time);
     const hud = this.player.hudData(time, this.remaining(), this.boss);
     hud.party = this.companions.getChildren().map((c) => c.hudData(time));
     hud.floorLabel = this.floorLabel();

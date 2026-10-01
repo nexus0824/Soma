@@ -26,6 +26,24 @@ const BEHAVIORS = {
     else e.stopMoving();
     if (visible && dist <= e.def.attackRange && time >= e.nextAttack) e.shoot(time, Math.atan2(dy, dx));
   },
+
+  kamikaze(e, ctx) {
+    const { target, dist, time, speed } = ctx;
+    const fuse = e.def.fuse;
+    if (dist > e.def.attackRange + target.radius) {
+      e.navigateTo(target.x, target.y, speed);
+      return;
+    }
+    e.stopMoving();
+    if (time < e.nextAttack) return;
+    e.nextAttack = time + e.def.attackCooldown;
+    const tg = e.scene.hazards.telegraph({ shape: 'circle', x: e.x, y: e.y, radius: fuse.radius, duration: fuse.windup, color: e.def.color });
+    e.beginCast(time, fuse.windup, () => {
+      e.scene.hazards.blastAt(e.x, e.y, fuse.radius, Math.round(e.atk * (fuse.damageMul || 1)), { color: e.def.color, shake: 0.006 });
+      e.suicide = true;
+      e.die(null);
+    }, tg, 0xffffff);
+  },
 };
 
 const ABILITIES = {
@@ -37,6 +55,27 @@ const ABILITIES = {
       });
     }
     FX.ring(e.scene, e.x, e.y, 60, e.def.color, 400, 5);
+  },
+
+  slam(e, cfg) {
+    const t = e.target;
+    if (!t) return;
+    const x = t.x;
+    const y = t.y;
+    const tg = e.scene.hazards.telegraph({ shape: 'circle', x, y, radius: cfg.radius, duration: cfg.windup, color: e.def.color });
+    e.beginCast(e.scene.combatNow, cfg.windup, () => {
+      e.scene.hazards.blastAt(x, y, cfg.radius, Math.round(e.atk * (cfg.damageMul || 1)), { color: e.def.color, shake: 0.006, shakeMs: 150 });
+    }, tg);
+  },
+
+  charge(e, cfg) {
+    const t = e.target;
+    if (!t) return;
+    const angle = Phaser.Math.Angle.Between(e.x, e.y, t.x, t.y);
+    const full = (cfg.speed * cfg.duration) / 1000;
+    const length = e.scene.nav.clearLength(e.x, e.y, angle, full) + e.radius;
+    const tg = e.scene.hazards.telegraph({ shape: 'line', x: e.x, y: e.y, angle, length, width: e.radius * 2 + 10, duration: cfg.windup, color: e.def.color });
+    e.beginCast(e.scene.combatNow, cfg.windup, (time) => e.startCharge(time, angle, cfg), tg);
   },
 
   summon(e, cfg) {

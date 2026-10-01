@@ -80,6 +80,15 @@ export default class Navigation {
     return field.dist[ty * this.cols + tx];
   }
 
+  clearLength(x, y, angle, max) {
+    const step = TILE / 3;
+    for (let d = step; d <= max; d += step) {
+      const { tx, ty } = this.toTile(x + Math.cos(angle) * d, y + Math.sin(angle) * d);
+      if (!this.isFloor(tx, ty)) return Math.max(0, d - step);
+    }
+    return max;
+  }
+
   rayClear(x0, y0, x1, y1) {
     const steps = Math.ceil(Phaser.Math.Distance.Between(x0, y0, x1, y1) / (TILE / 3));
     for (let i = 0; i <= steps; i++) {
