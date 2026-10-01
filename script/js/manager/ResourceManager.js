@@ -6,6 +6,7 @@ export default class ResourceManager {
   static buildAll(scene) {
     this.buildFloorTiles(scene);
     this.buildWallTiles(scene);
+    this.aliasFrames(scene, 'chest_mimic_open', ['chest_mimic_idle', 'chest_mimic_run']);
     this.buildAnims(scene);
     this.buildShapes(scene);
   }
@@ -35,6 +36,19 @@ export default class ResourceManager {
       ctx.drawImage(src, sx, sy, srcCell, srcCell, i * TILE, 0, TILE, TILE);
     }
     canvas.refresh();
+  }
+
+  static aliasFrames(scene, source, targets) {
+    const tex = scene.textures.get('dungeon');
+    for (let i = 0; ; i++) {
+      const name = `${source}_anim_f${i}`;
+      if (!tex.has(name)) break;
+      const f = tex.get(name);
+      for (const target of targets) {
+        const alias = `${target}_anim_f${i}`;
+        if (!tex.has(alias)) tex.add(alias, f.sourceIndex, f.cutX, f.cutY, f.cutWidth, f.cutHeight);
+      }
+    }
   }
 
   static buildAnims(scene) {
