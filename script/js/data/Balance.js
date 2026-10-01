@@ -30,6 +30,8 @@ export const BALANCE = {
   stuckMinMove: 8,
   sidestepMs: 350,
   hitStopScale: 0,
+  hitStaggerMs: 0,
+  retreat: { trigger: 120, stop: 170, duration: 400, cooldown: 2500, speedMul: 1.5, probeDeg: [0, 40, -40, 80, -80, 115, -115], probeDist: 90 },
   dodge: { distance: 170, duration: 170, cooldown: 2500, invulnExtra: 60, ghostEvery: 40 },
 };
 

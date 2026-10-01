@@ -15,8 +15,14 @@ const BEHAVIORS = {
     const { target, dist, dx, dy, time, speed } = ctx;
     const nav = e.scene.nav;
     const visible = !nav || nav.hasLineOfSight(e.x, e.y, target.x, target.y);
+    const r = e.retreatParams();
+    if (e.retreatUntil > time && dist > r.stop) e.retreatUntil = 0;
+    if (e.retreatUntil <= time && visible && dist < r.trigger && time >= e.nextRetreat) e.beginRetreat(time, dx, dy);
+    if (e.retreatUntil > time) {
+      e.desired.set(e.retreatDir.x * speed * r.speedMul, e.retreatDir.y * speed * r.speedMul);
+      return;
+    }
     if (dist > e.def.attackRange || !visible) e.navigateTo(target.x, target.y, speed);
-    else if (dist < e.def.keepDistance) e.moveToward(-dx, -dy, dist, speed);
     else e.stopMoving();
     if (visible && dist <= e.def.attackRange && time >= e.nextAttack) e.shoot(time, Math.atan2(dy, dx));
   },

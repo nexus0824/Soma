@@ -8,6 +8,7 @@ export function initSteering(actor) {
   actor.progressAt = 0;
   actor.progressX = actor.x;
   actor.progressY = actor.y;
+  actor.wasHolding = true;
 }
 
 export function computeSeparation(actor, lists, margin) {
@@ -53,6 +54,12 @@ export function trackProgress(actor, time, wantsMove) {
 
 export function applySteering(actor, time, maxSpd, lists) {
   const holding = actor.desired.x === 0 && actor.desired.y === 0;
+  if (actor.wasHolding && !holding) {
+    actor.progressAt = time;
+    actor.progressX = actor.x;
+    actor.progressY = actor.y;
+  }
+  actor.wasHolding = holding;
   let dx = actor.desired.x;
   let dy = actor.desired.y;
   if (time < actor.sidestepUntil && !holding) {
@@ -64,7 +71,7 @@ export function applySteering(actor, time, maxSpd, lists) {
   let vx = dx + sep.x * maxSpd * strength;
   let vy = dy + sep.y * maxSpd * strength;
   const len = Math.hypot(vx, vy);
-  const cap = holding ? maxSpd * 0.5 : maxSpd * 1.15;
+  const cap = holding ? maxSpd * 0.5 : Math.max(maxSpd * 1.15, Math.hypot(actor.desired.x, actor.desired.y));
   if (len > cap) {
     vx *= cap / len;
     vy *= cap / len;

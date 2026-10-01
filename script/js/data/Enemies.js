@@ -5,7 +5,7 @@ export const ENEMIES = {
   },
   shaman: {
     sprite: 'orc_shaman', scale: 3, bodyRadius: 5, hp: 62, atk: 15, def: 1, speed: 115, xp: 15, gold: 3, color: 0xb07cff,
-    behavior: 'ranged', attackRange: 300, keepDistance: 180, attackCooldown: 1500, projectileSpeed: 340,
+    behavior: 'ranged', attackRange: 300, retreat: { trigger: 120, stop: 170 }, attackCooldown: 1500, projectileSpeed: 340,
     breakMax: 40, aggroRange: 380,
   },
   ogre: {

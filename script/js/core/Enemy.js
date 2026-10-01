@@ -38,6 +38,10 @@ export default class Enemy extends Actor {
     this.nextDot = 0;
     this.windupUntil = 0;
     this.windupTarget = null;
+    this.staggerUntil = 0;
+    this.retreatUntil = 0;
+    this.nextRetreat = 0;
+    this.retreatDir = new Phaser.Math.Vector2();
     this.abilityState = [];
     this.wander = new Phaser.Math.Vector2();
     initSteering(this);
@@ -55,7 +59,7 @@ export default class Enemy extends Actor {
       if (!this.active) return;
     }
     if (this.mode === 'windup' && time >= this.windupUntil) this.releaseMelee(time);
-    if (this.breakUntil > time || this.knockUntil > time || this.mode === 'windup' || player.dead) {
+    if (this.breakUntil > time || this.knockUntil > time || this.staggerUntil > time || this.mode === 'windup' || player.dead) {
       if (this.knockUntil <= time) this.setVelocity(0, 0);
       this.play(`${this.spriteKey}_idle`, true);
       return;
@@ -138,6 +142,29 @@ export default class Enemy extends Actor {
     }
   }
 
+  retreatParams() {
+    return { ...BALANCE.retreat, ...(this.def.retreat || {}) };
+  }
+
+  beginRetreat(time, dx, dy) {
+    const r = this.retreatParams();
+    const nav = this.scene.nav;
+    const away = Math.atan2(-dy, -dx);
+    for (const deg of r.probeDeg) {
+      const a = away + Phaser.Math.DegToRad(deg);
+      const px = this.x + Math.cos(a) * r.probeDist;
+      const py = this.y + Math.sin(a) * r.probeDist;
+      const end = nav.toTile(px, py);
+      if (!nav.isFloor(end.tx, end.ty) || !nav.rayClear(this.x, this.y, px, py)) continue;
+      this.retreatDir.set(Math.cos(a), Math.sin(a));
+      this.retreatUntil = time + r.duration;
+      this.nextRetreat = time + r.cooldown;
+      return true;
+    }
+    this.nextRetreat = time + r.cooldown * 0.5;
+    return false;
+  }
+
   moveToward(dx, dy, dist, spd) {
     if (dist < 1) {
       this.desired.set(0, 0);
@@ -193,6 +220,8 @@ export default class Enemy extends Actor {
       const color = dmg.crit ? '#ffd23f' : broken ? '#ff8a5c' : '#ffffff';
       FX.floatText(this.scene, this.x, this.y - this.displayHeight / 2 - 4, amount, color, dmg.crit ? 20 : 15);
       this.hitReact(now, 120);
+      const stagger = BALANCE.hitStaggerMs * (1 - (this.def.knockbackResist || 0));
+      if (stagger > 0) this.staggerUntil = Math.max(this.staggerUntil, now + stagger);
     }
     let brokeNow = false;
     if (!broken && breakAmt) {
