@@ -32,6 +32,7 @@
 - 브라우저 패인은 RAF가 자주 스로틀되므로 시간 기반 관찰이 불안정하다. 이동·AI·전투는 JS로 `game.loop.delta = 16; game.step(t, 16)` 루프를 돌려 프레임을 직접 시뮬레이션한다. `window.somaGame` 이 게임 인스턴스다.
 - Phaser 3.60 TweenManager 는 Date.now() 기반이라 수동 스텝에서는 실시간이 지나야 진행된다. 트윈 검증은 스텝 사이에 실제 시간을 흘려야 한다.
 - 성능 오버레이는 F3 또는 `?debug=1`. 아틀라스 시트 확인은 `tools/atlas-viewer.html`.
+- 시드 결정성 검증은 브라우저 콘솔에서 `const SC = await import('/tools/seed-check.js')` 로 불러 `captureSnapshots`/`diffSnapshots`/`saveBaseline`/`loadBaseline`/`measurePerf` 를 쓴다. 스폰·맵·보상 코드를 바꾸기 전에 기준값을 저장하고, 바꾼 뒤 불일치 0건을 확인한다.
 - 벽 오토타일은 Godot 3x3 minimal 템플릿 순서(`data/Autotile.js`)를 따른다.
 
 ## 대화 태도
