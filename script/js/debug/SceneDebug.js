@@ -20,6 +20,9 @@ export default class SceneDebug extends Phaser.Scene {
     }).setOrigin(0, 1).setDepth(1e6).setScrollFactor(0).setVisible(enabled);
     this.input.keyboard.addCapture('F3');
     this.input.keyboard.on('keydown-F3', () => this.toggle());
+    this.input.keyboard.on('keydown-M', () => {
+      if (this.enabled) this.registry.set('revealMap', !this.registry.get('revealMap'));
+    });
     this.stepMs = 0;
     this.renderMs = 0;
     this.acc = 0;

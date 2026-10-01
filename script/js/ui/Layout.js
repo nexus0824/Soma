@@ -10,6 +10,7 @@ function buildLayout() {
     gold: { x: W - 62, y: 24 },
     bag: { x: W - 30, y: 26 },
     boss: { y: 62, w: 420 },
+    minimap: { x: W - 188, y: 50, w: 176, h: 160, reveal: 7 },
     party: { x: 12, y: 70, w: 226, rowH: 40, hint: 154 },
     mods: { x: 12, y: 168 },
     log: { x: W / 2, y: H - 150 },
