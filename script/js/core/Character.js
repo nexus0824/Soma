@@ -4,7 +4,7 @@ import { SKILLS } from '../data/Skills.js';
 import { sellPrice, createItem, emptyEquipment, bestEquipSlotFor, equipSlotsFor } from '../data/Items.js';
 import { computeStats } from './Stats.js';
 
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 export default class Character {
   constructor(data) {
@@ -67,6 +67,11 @@ export default class Character {
     if (prev) this.inventory.push(prev);
     this.recalc();
     return true;
+  }
+
+  previewStats(item, slotId) {
+    const target = slotId && equipSlotsFor(item.slot).some((s) => s.id === slotId) ? slotId : bestEquipSlotFor(this.equipment, item);
+    return computeStats(this.cls, this.level, { ...this.equipment, [target]: item });
   }
 
   unequip(slot) {

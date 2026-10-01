@@ -7,11 +7,11 @@ import AttackController from '../combat/AttackController.js';
 import { runEffect } from '../combat/Effects.js';
 import * as FX from './FX.js';
 import { t } from '../i18n/I18n.js';
-import { BALANCE, mitigate } from '../data/Balance.js';
+import { BALANCE, mitigate, defenseKFor } from '../data/Balance.js';
 import { initSteering, applySteering } from '../ai/Steering.js';
-import { defaultLook } from '../data/WeaponLooks.js';
-import { GAME_RNG } from './Rng.js';
-import { emptyEquipment } from '../data/Items.js';
+import { defaultLook, weaponLookFor } from '../data/WeaponLooks.js';
+import { GAME_RNG, floorRng } from './Rng.js';
+import { emptyEquipment, createItem } from '../data/Items.js';
 
 export const TACTICS = ['aggressive', 'follow'];
 const REVIVE_MS = 12000;
@@ -51,8 +51,19 @@ export default class Companion extends Actor {
     this.desired.set(0, 0);
   }
 
+  buildKit() {
+    const scene = this.scene;
+    const level = scene.level || 1;
+    const rng = floorRng(scene.run && scene.run.seed ? scene.run.seed : 1, level, `companion-${this.clsId}`);
+    const kit = emptyEquipment();
+    for (const slot of ['weapon', 'chest', 'legs', 'gloves']) kit[slot] = createItem(level, this.clsId, slot, 'common', { rng });
+    return kit;
+  }
+
   recalc() {
-    this.stats = computeStats(this.cls, this.level, emptyEquipment());
+    if (!this.kit) this.kit = this.buildKit();
+    this.stats = computeStats(this.cls, this.level, this.kit);
+    if (this.weaponRig) this.setWeaponLook(weaponLookFor(this.clsId, this.kit.weapon));
     this.stats.atk = Math.max(1, Math.round((this.stats.atk + this.level * 0.8) * BALANCE.companionDamageMul));
   }
 
@@ -189,7 +200,7 @@ export default class Companion extends Actor {
 
   takeDamage(raw, time) {
     if (this.downed || time < this.invulnUntil) return;
-    let amount = Math.max(1, Math.round(mitigate(raw * GAME_RNG.floatBetween(0.9, 1.1), this.stats.def)));
+    let amount = Math.max(1, Math.round(mitigate(raw * GAME_RNG.floatBetween(0.9, 1.1), this.stats.def, defenseKFor(this.scene.level))));
     amount = this.absorbWithShield(amount);
     if (amount <= 0) return;
     this.hp -= amount;

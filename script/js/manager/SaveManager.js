@@ -1,6 +1,6 @@
 import { SAVE_KEY } from '../Define.js';
 import { DUNGEONS } from '../data/Dungeons.js';
-import { emptyEquipment } from '../data/Items.js';
+import { emptyEquipment, createItem } from '../data/Items.js';
 
 function migrateItems(data) {
   const fix = (item) => {
@@ -39,13 +39,28 @@ function migrateSlots(data) {
   return data;
 }
 
+function rerollItems(data) {
+  const reroll = (item) => {
+    if (!item) return item;
+    const fresh = createItem(item.floor || 1, item.cls || data.clsId, item.slot, item.rarity);
+    fresh.uid = item.uid || fresh.uid;
+    if (item.look) fresh.look = item.look;
+    return fresh;
+  };
+  for (const slot of Object.keys(data.equipment || {})) data.equipment[slot] = reroll(data.equipment[slot]);
+  data.inventory = (data.inventory || []).map(reroll);
+  data.v = 5;
+  return data;
+}
+
 function migrate(data) {
-  if (data.v >= 4) return data;
-  if (data.v === 3) return migrateSlots(data);
-  if (data.v === 2) return migrateSlots(migrateItems(data));
+  if (data.v >= 5) return data;
+  if (data.v === 4) return rerollItems(data);
+  if (data.v === 3) return rerollItems(migrateSlots(data));
+  if (data.v === 2) return rerollItems(migrateSlots(migrateItems(data)));
   const floor = Math.max(1, data.floor || 1);
   const capped = Math.min(floor, DUNGEONS.ruins.floors);
-  return migrateSlots(migrateItems({
+  return rerollItems(migrateSlots(migrateItems({
     v: 2,
     clsId: data.clsId,
     level: data.level,
@@ -57,7 +72,7 @@ function migrate(data) {
     skillPoints: data.skillPoints || 0,
     progress: { cleared: {}, best: { ruins: Math.min(data.maxFloor || floor, DUNGEONS.ruins.floors) }, dailyDone: null },
     run: { dungeonId: 'ruins', floor: capped, floors: DUNGEONS.ruins.floors, modifiers: [], daily: false, dateKey: null },
-  }));
+  })));
 }
 
 export default class SaveManager {

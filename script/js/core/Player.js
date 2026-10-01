@@ -5,7 +5,7 @@ import AttackController from '../combat/AttackController.js';
 import { runEffect } from '../combat/Effects.js';
 import * as FX from './FX.js';
 import { t } from '../i18n/I18n.js';
-import { BALANCE, mitigate } from '../data/Balance.js';
+import { BALANCE, mitigate, defenseKFor } from '../data/Balance.js';
 import { InputState } from './InputState.js';
 import { weaponLookFor } from '../data/WeaponLooks.js';
 import { GAME_RNG } from './Rng.js';
@@ -154,7 +154,7 @@ export default class Player extends Actor {
 
   takeDamage(raw, time) {
     if (this.dead || time < this.invulnUntil) return;
-    let amount = Math.max(1, Math.round(mitigate(raw * GAME_RNG.floatBetween(0.9, 1.1), this.stats.def)));
+    let amount = Math.max(1, Math.round(mitigate(raw * GAME_RNG.floatBetween(0.9, 1.1), this.stats.def, defenseKFor(this.scene.level))));
     amount = this.absorbWithShield(amount);
     if (amount <= 0) return;
     this.hp -= amount;
@@ -192,6 +192,10 @@ export default class Player extends Actor {
 
   equip(item, slotId) {
     if (this.character.equip(item, slotId)) this.recalc();
+  }
+
+  previewStats(item, slotId) {
+    return this.character.previewStats(item, slotId);
   }
 
   unequip(slot) {
