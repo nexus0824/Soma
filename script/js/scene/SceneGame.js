@@ -1,5 +1,5 @@
 import { TILE, MAP_COLS, MAP_ROWS, DEPTH } from '../Define.js';
-import { ENEMIES, pickWeighted } from '../data/Enemies.js';
+import { ENEMIES, pickWeighted, dropMulFor } from '../data/Enemies.js';
 import { createItem, rollRarity, itemName } from '../data/Items.js';
 import { t } from '../i18n/I18n.js';
 import { CLASSES } from '../data/Classes.js';
@@ -11,6 +11,7 @@ import Companion, { TACTICS } from '../core/Companion.js';
 import Enemy from '../core/Enemy.js';
 import Projectile from '../core/Projectile.js';
 import Loot from '../core/Loot.js';
+import { getRoomType } from '../core/RoomTypes.js';
 import { generateDungeon, buildTileIndices, roomRandomTile, tileToWorld } from '../core/Dungeon.js';
 import Navigation from '../ai/Navigation.js';
 import { InputState } from '../core/InputState.js';
@@ -20,6 +21,7 @@ import HazardManager from '../combat/Hazards.js';
 import SaveManager from '../manager/SaveManager.js';
 import { MAX_INVENTORY } from '../Define.js';
 import { GAME_RNG, floorRng } from '../core/Rng.js';
+import { ELITE, CHEST, MIMIC } from '../data/Rooms.js';
 
 export default class SceneGame extends Phaser.Scene {
   constructor() {
@@ -47,6 +49,8 @@ export default class SceneGame extends Phaser.Scene {
     this.hazards = new HazardManager(this);
     this.entities = new Map();
     this.entitySeq = 1;
+    this.explored = new Uint8Array(MAP_COLS * MAP_ROWS);
+    this.killsSinceDrop = 0;
     this.fxTweens.start();
     this.isBossFloor = isBossFloor(this.dungeonDef, this.floor, this.run.floors);
     this.character.setBest(this.run.dungeonId, this.floor);
@@ -64,6 +68,8 @@ export default class SceneGame extends Phaser.Scene {
     });
     this.enemies = this.physics.add.group({ collideWorldBounds: true });
     this.loots = this.physics.add.group();
+    this.blockers = this.physics.add.staticGroup();
+    this.interactables = [];
     this.playerProjectiles = this.physics.add.group({ classType: Projectile, runChildUpdate: true });
     this.enemyProjectiles = this.physics.add.group({ classType: Projectile, runChildUpdate: true });
     this.buildPortal();
@@ -71,6 +77,9 @@ export default class SceneGame extends Phaser.Scene {
     this.aimMarker = this.add.image(0, 0, 'glow').setTint(0xff6b5c).setScale(0.5).setAlpha(0.7).setDepth(DEPTH.DECAL + 1).setVisible(false);
 
     this.physics.add.collider(this.player, this.layer);
+    this.physics.add.collider(this.player, this.blockers);
+    this.physics.add.collider(this.companions, this.blockers);
+    this.physics.add.collider(this.enemies, this.blockers);
     this.physics.add.collider(this.enemies, this.layer);
     this.physics.add.collider(this.player, this.enemies);
     this.physics.add.collider(this.companions, this.layer);
@@ -91,7 +100,7 @@ export default class SceneGame extends Phaser.Scene {
     this.keys = this.input.keyboard.addKeys({
       up: 'W', down: 'S', left: 'A', right: 'D',
       up2: 'UP', down2: 'DOWN', left2: 'LEFT', right2: 'RIGHT',
-      attack: 'J', dodge: 'SPACE', s1: 'K', s2: 'L', s3: 'SEMICOLON',
+      attack: 'J', dodge: 'SPACE', s1: 'K', s2: 'L', s3: 'SEMICOLON', interact: 'E',
     });
     this.input.mouse.disableContextMenu();
     this.events.off('resume', this.onResume, this);
@@ -152,10 +161,14 @@ export default class SceneGame extends Phaser.Scene {
   buildMap() {
     const gen = { ...this.dungeonDef.gen };
     gen.roomCount = (gen.roomCount || 8) + Math.min(3, Math.floor(this.floor / 4));
+    gen.floor = this.floor;
     this.mapRng = floorRng(this.run.seed, this.floor, 'map');
     this.spawnRng = floorRng(this.run.seed, this.floor, 'spawn');
+    gen.roomRng = floorRng(this.run.seed, this.floor, 'rooms');
+    gen.roomPlan = this.dungeonDef.roomPlan;
     this.dungeon = generateDungeon(MAP_COLS, MAP_ROWS, gen, this.mapRng);
     this.nav = new Navigation(this.dungeon.grid);
+    this.decorateRooms();
     const map = this.make.tilemap({ tileWidth: TILE, tileHeight: TILE, width: MAP_COLS, height: MAP_ROWS });
     const floorSet = map.addTilesetImage('floortiles', 'floortiles', TILE, TILE, 0, 0, 0);
     const wallSet = map.addTilesetImage('walltiles', 'walltiles', TILE, TILE, 0, 0, floorSet.total);
@@ -188,6 +201,10 @@ export default class SceneGame extends Phaser.Scene {
     this.portalGlow = this.add.image(c.x, c.y + 4, 'glow').setDepth(DEPTH.DECAL).setTint(0x8be3ff).setScale(1.6).setVisible(false);
   }
 
+  bossEnrageParams() {
+    return { ...BALANCE.bossEnrage, ...(this.dungeonDef.bossEnrage || {}) };
+  }
+
   enemyScale() {
     const lvl = this.level;
     const def = this.dungeonDef;
@@ -195,7 +212,7 @@ export default class SceneGame extends Phaser.Scene {
     const growth = 1 + per * (lvl - 1);
     return {
       level: lvl,
-      hp: (1 + BALANCE.enemyHpPerLevel * (lvl - 1)) * this.mods.enemyHpMul,
+      hp: (1 + (def.enemyScale && def.enemyScale.hp !== undefined ? def.enemyScale.hp : BALANCE.enemyHpPerLevel) * (lvl - 1)) * this.mods.enemyHpMul,
       atk: (1 + BALANCE.enemyAtkPerLevel * (lvl - 1)) * this.mods.enemyAtkMul,
       xp: growth * this.mods.xpMul,
       gold: 1 + BALANCE.enemyGoldPerLevel * (lvl - 1),
@@ -204,13 +221,103 @@ export default class SceneGame extends Phaser.Scene {
     };
   }
 
+  decorateRooms() {
+    for (const room of this.dungeon.rooms) {
+      const props = getRoomType(room.type).props;
+      const n = this.spawnRng.between(props.count[0], props.count[1]);
+      for (let i = 0; i < n && props.frames.length; i++) {
+        const tx = this.spawnRng.between(room.x, room.x + room.w - 1);
+        const ty = this.spawnRng.between(room.y, room.y + room.h - 1);
+        if (Math.abs(tx - room.cx) <= 1 && Math.abs(ty - room.cy) <= 1) continue;
+        const w = tileToWorld(tx, ty);
+        this.add.image(w.x + this.spawnRng.between(-8, 8), w.y + this.spawnRng.between(-6, 6), 'dungeon', this.spawnRng.pick(props.frames)).setScale(3).setDepth(DEPTH.DECAL).setAlpha(0.9);
+      }
+    }
+  }
+
+  spawnRoomFeatures() {
+    for (const room of this.dungeon.rooms) {
+      const handler = getRoomType(room.type);
+      if (handler.spawn) handler.spawn(this, room);
+    }
+  }
+
+  remainingInRoom(room) {
+    let n = 0;
+    for (const e of this.enemies.getChildren()) if (e.active && e.room === room) n++;
+    return n;
+  }
+
+  findInteractable() {
+    if (!this.player || this.player.dead) return null;
+    for (const it of this.interactables) if (it.active && it.canInteract(this.player)) return it;
+    return null;
+  }
+
+  addInteractable(obj, solid = false) {
+    this.interactables.push(obj);
+    if (solid) this.blockers.add(obj);
+    return obj;
+  }
+
+  removeInteractable(obj) {
+    const i = this.interactables.indexOf(obj);
+    if (i >= 0) this.interactables.splice(i, 1);
+  }
+
+  spawnPack(room, cells, size, opts = {}) {
+    const table = spawnTableFor(this.dungeonDef, this.floor);
+    let placed = 0;
+    for (let i = 0; i < size; i++) {
+      const cell = cells[i % cells.length];
+      const w = tileToWorld(cell.tx, cell.ty);
+      const e = this.addEnemy(pickWeighted(table, this.spawnRng), w.x, w.y, true, opts);
+      if (e) {
+        e.room = room;
+        placed++;
+      }
+    }
+    return placed;
+  }
+
+  dropChestRewards(x, y, bonus = {}) {
+    const c = this.character;
+    const gold = Math.round((CHEST.goldBase + CHEST.goldPerLevel * this.level) * (bonus.goldMul || 1) * GAME_RNG.floatBetween(0.8, 1.3));
+    this.dropLoot(x, y, { kind: 'gold', amount: gold });
+    const opts = this.itemOpts();
+    const rarityBonus = opts.rarityBonus + CHEST.itemRarityBonus + (bonus.rarityBonus || 0);
+    this.dropLoot(x, y, { kind: 'item', item: createItem(this.level, c.clsId, undefined, rollRarity(this.level, 'magic', rarityBonus), opts) });
+    if (GAME_RNG.chance(CHEST.secondItemChance)) this.dropLoot(x, y, { kind: 'item', item: createItem(this.level, c.clsId, undefined, rollRarity(this.level, CHEST.secondItemMinRarity, opts.rarityBonus + (bonus.rarityBonus || 0)), opts) });
+  }
+
+  openChest(chest) {
+    this.dropChestRewards(chest.x, chest.y + TILE);
+    this.events.emit('log', t('game.chestOpen'), '#ffd23f');
+  }
+
+  spawnMimic(chest) {
+    const room = chest.room;
+    this.dungeon.grid[room.cy][room.cx] = 1;
+    const x = chest.baseX;
+    const y = chest.y;
+    chest.destroy();
+    const e = this.addEnemy('mimic', x, y, false);
+    if (e) {
+      e.room = room;
+      e.aggro = true;
+    }
+    this.events.emit('log', t('game.mimic'), '#ff8ab0');
+    this.cameras.main.shake(200, 0.006);
+    return e;
+  }
+
   spawnEnemies() {
     const { rooms, spawnRoom, exitRoom } = this.dungeon;
-    const candidates = rooms.filter((r) => r !== spawnRoom && (!this.isBossFloor || r !== exitRoom));
+    this.spawnRoomFeatures();
+    const candidates = rooms.filter((r) => getRoomType(r.type).allowsPacks && r !== spawnRoom && (!this.isBossFloor || r !== exitRoom));
     let count = Math.min(BALANCE.enemyCountMax, BALANCE.enemyCountBase + this.floor * BALANCE.enemyCountPerFloor);
     if (this.isBossFloor) count = Math.floor(count * BALANCE.bossFloorCountMul);
     count = Math.round(count * this.mods.enemyCountMul);
-    const table = spawnTableFor(this.dungeonDef, this.floor);
     const spawn = tileToWorld(spawnRoom.cx, spawnRoom.cy);
     let placed = 0;
     let attempts = 0;
@@ -222,12 +329,7 @@ export default class SceneGame extends Phaser.Scene {
       if (Phaser.Math.Distance.Between(anchor.x, anchor.y, spawn.x, spawn.y) < 300) continue;
       const packSize = Math.min(count - placed, this.spawnRng.between(BALANCE.packMin, BALANCE.packMax));
       const cells = this.packCells(anchorTile.x, anchorTile.y, 2);
-      for (let i = 0; i < packSize; i++) {
-        const cell = cells[i % cells.length];
-        const w = tileToWorld(cell.tx, cell.ty);
-        const e = this.addEnemy(pickWeighted(table, this.spawnRng), w.x, w.y);
-        if (e) placed++;
-      }
+      placed += this.spawnPack(room, cells, packSize);
     }
     if (this.isBossFloor) {
       const c = tileToWorld(exitRoom.cx, exitRoom.cy - 1);
@@ -266,11 +368,11 @@ export default class SceneGame extends Phaser.Scene {
     return actor;
   }
 
-  addEnemy(typeId, x, y, jitter = true) {
+  addEnemy(typeId, x, y, jitter = true, opts = {}) {
     const def = ENEMIES[typeId];
     const spot = this.nav.nearestClearWorld(x, y, def.bodyRadius * def.scale);
     if (!spot) return null;
-    const e = new Enemy(this, spot.x, spot.y, typeId, this.enemyScale());
+    const e = new Enemy(this, spot.x, spot.y, typeId, { ...this.enemyScale(), elite: !!opts.elite });
     this.enemies.add(e);
     if (e.def.boss) e.body.setImmovable(true);
     this.placeActorAt(e, spot.x, spot.y, jitter);
@@ -463,8 +565,9 @@ export default class SceneGame extends Phaser.Scene {
 
   onEnemyKilled(e) {
     this.player.gainXp(e.xp);
-    if (e.def.boss || GAME_RNG.chance(0.6)) {
-      this.dropLoot(e.x, e.y, { kind: 'gold', amount: Math.max(1, Math.round(e.goldValue * GAME_RNG.floatBetween(0.7, 1.4))) });
+    const D = BALANCE.drops;
+    if (e.def.boss || GAME_RNG.chance(D.goldChance)) {
+      this.dropLoot(e.x, e.y, { kind: 'gold', amount: Math.max(1, Math.round(e.goldValue * D.goldMul * GAME_RNG.floatBetween(0.7, 1.4))) });
     }
     const opts = this.itemOpts();
     if (e.def.boss) {
@@ -473,8 +576,22 @@ export default class SceneGame extends Phaser.Scene {
       this.boss = null;
       this.events.emit('log', t('game.bossDown', { name: t(`enemy.${e.typeId}`) }), '#ff8ab0');
       this.cameras.main.shake(300, 0.01);
-    } else if (GAME_RNG.chance(0.22 * this.mods.dropChanceMul)) {
-      this.dropLoot(e.x, e.y, { kind: 'item', item: createItem(this.level, this.player.clsId, undefined, undefined, opts) });
+    } else if (e.def.mimic) {
+      this.dropChestRewards(e.x, e.y, { goldMul: MIMIC.goldMul, rarityBonus: MIMIC.rarityBonus });
+      this.events.emit('log', t('game.mimicDown'), '#ffd23f');
+    } else if (e.elite) {
+      if (e.room && this.remainingInRoom(e.room) <= 1) {
+        this.dropLoot(e.x, e.y, { kind: 'item', item: createItem(this.level, this.player.clsId, undefined, rollRarity(this.level, 'magic', opts.rarityBonus + ELITE.dropRarityBonus), opts) });
+        if (GAME_RNG.chance(D.elitePackBonusChance)) this.dropLoot(e.x, e.y, { kind: 'item', item: createItem(this.level, this.player.clsId, undefined, rollRarity(this.level, 'magic', opts.rarityBonus), opts) });
+      }
+    } else {
+      this.killsSinceDrop++;
+      const forced = this.killsSinceDrop >= D.pityKills;
+      if (forced || GAME_RNG.chance(D.itemChance * this.mods.dropChanceMul * dropMulFor(e.typeId))) {
+        this.killsSinceDrop = 0;
+        const minRarity = this.floor > D.commonUntilFloor ? 'magic' : undefined;
+        this.dropLoot(e.x, e.y, { kind: 'item', item: createItem(this.level, this.player.clsId, undefined, rollRarity(this.level, minRarity, opts.rarityBonus), opts) });
+      }
     }
     if (this.remaining() - 1 <= 0) this.openPortal();
   }
@@ -581,6 +698,7 @@ export default class SceneGame extends Phaser.Scene {
     const delta = this.advanceCombatClock(realDelta);
     if (!this.player || this.transitioning) return;
     const time = this.combatNow;
+    this.interactTarget = this.findInteractable();
     if (!this.player.dead) {
       const k = this.keys;
       let mx = (k.right.isDown || k.right2.isDown ? 1 : 0) - (k.left.isDown || k.left2.isDown ? 1 : 0);
@@ -590,9 +708,15 @@ export default class SceneGame extends Phaser.Scene {
         my = InputState.moveY;
       }
       const JustDown = Phaser.Input.Keyboard.JustDown;
-      const attackPressed = JustDown(k.attack) || InputState.attackPressed;
+      let attackPressed = JustDown(k.attack) || InputState.attackPressed;
+      let attackHeld = k.attack.isDown || InputState.attack;
+      if (this.interactTarget) {
+        if (attackPressed || JustDown(k.interact)) this.interactTarget.interact();
+        attackPressed = false;
+        attackHeld = false;
+      }
       const actions = {
-        attack: k.attack.isDown || InputState.attack,
+        attack: attackHeld,
         attackPressed,
         dodge: JustDown(k.dodge) || InputState.dodgePressed,
         dodgeTarget: InputState.dodgeTarget,
@@ -612,10 +736,13 @@ export default class SceneGame extends Phaser.Scene {
     for (const c of this.companions.getChildren()) c.update(time, delta);
     for (const e of [...this.enemies.getChildren()]) e.update(time, delta);
     this.hazards.update(time);
+    for (const it of [...this.interactables]) if (it.active && it.update) it.update(time);
     const hud = this.player.hudData(time, this.remaining(), this.boss);
     hud.party = this.companions.getChildren().map((c) => c.hudData(time));
     hud.floorLabel = this.floorLabel();
     hud.modNames = this.modNames();
+    hud.interact = this.interactTarget ? this.interactTarget.promptKey : null;
+    if (hud.boss && this.boss && this.boss.enrageMul > 0) hud.boss.name = `${hud.boss.name} ${t('hud.enraged', { pct: Math.round(this.boss.enrageMul * 100) })}`;
     this.events.emit('hud', hud);
   }
 }
